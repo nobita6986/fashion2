@@ -1,0 +1,176 @@
+/* Mix Mode Complete Layout Styles - 2 Column Layout */
+.mix-mode-complete-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    width: 100%;
+}
+
+/* Left Column - Source Upload & Extracted Items */
+.mix-mode-left-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.source-upload-column {
+    background: #1a1a1a;
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid #333;
+}
+
+.source-upload-column .action-buttons {
+    margin-top: 1rem;
+}
+
+.extracted-items-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.extracted-items-title {
+    font-size: 0.9rem;
+    color: #bb86fc;
+    margin-bottom: 0;
+    font-weight: 600;
+}
+
+.extracted-items-container {
+    background: #1a1a1a;
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid #333;
+    flex: 1;
+}
+
+/* Garment Type Selector Buttons */
+.garment-type-selector {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.garment-type-btn {
+    padding: 6px 12px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    color: #888;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.garment-type-btn:hover {
+    background: #333;
+    color: #fff;
+}
+
+.garment-type-btn.active {
+    background: #bb86fc;
+    color: #000;
+    border-color: #bb86fc;
+}
+
+.extracted-items {
+    display: grid;
+    gap: 1rem;
+}
+
+.extracted-items:not(.skirt-mode) {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.extracted-items.skirt-mode {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* Right Column - Model & Advanced Settings */
+.mix-mode-right-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.model-upload-section {
+    background: #1a1a1a;
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid #333;
+}
+
+.subsection-title {
+    font-size: 0.9rem;
+    color: #bb86fc;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.advanced-settings-section {
+    background: #1a1a1a;
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid #333;
+    flex: 1;
+}
+
+.advanced-settings-card {
+    background: #222;
+    border-radius: 8px;
+    border: 1px solid #333;
+    overflow: hidden;
+}
+
+.advanced-settings-card .settings-card-header {
+    background: #252525;
+    padding: 10px 14px;
+    border-bottom: 1px solid #333;
+}
+
+.advanced-settings-card .settings-card-header label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.advanced-settings-card .settings-card-body {
+    padding: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+    .mix-mode-complete-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .mix-mode-left-column,
+    .mix-mode-right-column {
+        gap: 1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .extracted-items:not(.skirt-mode),
+    .extracted-items.skirt-mode {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .extracted-items-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 480px) {
+    .extracted-items:not(.skirt-mode),
+    .extracted-items.skirt-mode {
+        grid-template-columns: 1fr;
+    }
+}
