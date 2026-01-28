@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Modality } from "@google/genai";
@@ -232,6 +232,68 @@ const urlToGenerativePart = async (url: string) => {
     return {
         inlineData: { data: base64, mimeType: blob.type },
     };
+};
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const extractGenAiErrorInfo = (err: unknown) => {
+    const anyErr = err as any;
+    const message = typeof anyErr?.message === 'string' ? anyErr.message : String(err);
+    const code = anyErr?.code ?? anyErr?.error?.code;
+    const status = anyErr?.status ?? anyErr?.error?.status;
+    return { message, code, status };
+};
+
+const isOverloadedError = (err: unknown) => {
+    const { message, code, status } = extractGenAiErrorInfo(err);
+    return code === 503 || status === 'UNAVAILABLE' || /overloaded|unavailable|503/i.test(message);
+};
+
+const generateImageWithRetry = async ({
+    ai,
+    model,
+    contents,
+    config,
+    fallbackModels = [],
+    retryDelaysMs = [800, 1600, 3200],
+}: {
+    ai: GoogleGenAI;
+    model: string;
+    contents: any;
+    config: any;
+    fallbackModels?: string[];
+    retryDelaysMs?: number[];
+}) => {
+    const tryModel = async (modelName: string) => {
+        for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+            try {
+                return await ai.models.generateContent({ model: modelName, contents, config });
+            } catch (err) {
+                if (isOverloadedError(err) && attempt < retryDelaysMs.length) {
+                    await delay(retryDelaysMs[attempt]);
+                    continue;
+                }
+                throw err;
+            }
+        }
+    };
+
+    try {
+        return await tryModel(model);
+    } catch (err) {
+        if (!isOverloadedError(err)) throw err;
+        const uniqueFallbacks = fallbackModels.filter((m, i, arr) => m && m !== model && arr.indexOf(m) === i);
+        let lastErr = err;
+        for (const fallback of uniqueFallbacks) {
+            try {
+                return await tryModel(fallback);
+            } catch (fallbackErr) {
+                lastErr = fallbackErr;
+                if (!isOverloadedError(fallbackErr)) throw fallbackErr;
+            }
+        }
+        throw lastErr;
+    }
 };
 
 // Mask API Key for display
@@ -971,7 +1033,7 @@ const App = () => {
     const [isGuideOpen, setIsGuideOpen] = useState(false);
 
     // Tab State
-    const [activeTab, setActiveTab] = useState<'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer'>('try-on');
+    const [activeTab, setActiveTab] = useState<'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer' | 'change-background'>('try-on');
 
     // --- Try-On States (Mix & Match Mode) ---
     // Clothing items (optional uploads)
@@ -998,6 +1060,68 @@ const App = () => {
     // --- AI Influencer States ---
     const [influencerResult, setInfluencerResult] = useState<string | null>(null);
     const [isGeneratingInfluencer, setIsGeneratingInfluencer] = useState(false);
+
+    // --- Change Background States ---
+    const [bgSourceFile, setBgSourceFile] = useState<File | null>(null);
+    const [bgSourcePreview, setBgSourcePreview] = useState<string | null>(null);
+    const [customBgFile, setCustomBgFile] = useState<File | null>(null);
+    const [customBgPreview, setCustomBgPreview] = useState<string | null>(null);
+    const [bgResult, setBgResult] = useState<string | null>(null);
+    const [isChangingBg, setIsChangingBg] = useState(false);
+    const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
+    const [showBgSelector, setShowBgSelector] = useState(false);
+
+    // 54 Background Presets (Transparent handled separately in UI)
+    const backgroundPresets = [
+        // Original 20
+        { id: 'fashion-store', name: 'Cửa hàng thời trang', icon: '🏪', desc: 'Store' },
+        { id: 'beach', name: 'Bãi biển', icon: '🏖️', desc: 'Beach' },
+        { id: 'cafe', name: 'Quán cà phê', icon: '☕', desc: 'Cafe' },
+        { id: 'garden', name: 'Vườn hoa', icon: '🌸', desc: 'Garden' },
+        { id: 'studio', name: 'Photo Studio', icon: '📸', desc: 'Studio' },
+        { id: 'street', name: 'Phố đi bộ', icon: '🏙️', desc: 'Street' },
+        { id: 'park', name: 'Công viên', icon: '🌳', desc: 'Park' },
+        { id: 'restaurant', name: 'Nhà hàng', icon: '🍽️', desc: 'Restaurant' },
+        { id: 'hotel-lobby', name: 'Khách sạn', icon: '🏨', desc: 'Hotel' },
+        { id: 'boutique', name: 'Shop quần áo', icon: '👗', desc: 'Boutique' },
+        { id: 'rooftop', name: 'Sân thượng', icon: '🌆', desc: 'Rooftop' },
+        { id: 'mall', name: 'TT Thương mại', icon: '🛍️', desc: 'Mall' },
+        { id: 'nature', name: 'Thiên nhiên', icon: '🌿', desc: 'Nature' },
+        { id: 'urban', name: 'Đô thị', icon: '🏗️', desc: 'Urban' },
+        { id: 'sunset', name: 'Hoàng hôn', icon: '🌅', desc: 'Sunset' },
+        { id: 'office', name: 'Văn phòng', icon: '💼', desc: 'Office' },
+        { id: 'gym', name: 'Phòng gym', icon: '🏋️', desc: 'Gym' },
+        { id: 'photobooth', name: 'Photo Booth', icon: '🎪', desc: 'Booth' },
+        { id: 'neon', name: 'Neon City', icon: '🌃', desc: 'Neon' },
+        { id: 'vintage', name: 'Phong cách cổ', icon: '🎨', desc: 'Vintage' },
+        // Additional 25
+        { id: 'bedroom', name: 'Phòng ngủ', icon: '🛏️', desc: 'Bedroom' },
+        { id: 'kitchen', name: 'Nhà bếp', icon: '🍳', desc: 'Kitchen' },
+        { id: 'balcony', name: 'Ban công', icon: '🌺', desc: 'Balcony' },
+        { id: '游泳池', name: 'Hồ bơi', icon: '🏊', desc: 'Pool' },
+        { id: 'yoga', name: 'Phòng yoga', icon: '🧘', desc: 'Yoga' },
+        { id: 'library', name: 'Thư viện', icon: '📚', desc: 'Library' },
+        { id: 'museum', name: 'Bảo tàng', icon: '🏛️', desc: 'Museum' },
+        { id: 'cinema', name: 'Rạp chiếu phim', icon: '🎬', desc: 'Cinema' },
+        { id: 'bar', name: 'Quán bar', icon: '🍸', desc: 'Bar' },
+        { id: 'garden-wedding', name: 'Vườn cưới', icon: '💒', desc: 'Wedding' },
+        { id: 'island', name: 'Đảo nhiệt đới', icon: '🏝️', desc: 'Island' },
+        { id: 'waterfall', name: 'Thác nước', icon: '💦', desc: 'Waterfall' },
+        { id: 'mountain', name: 'Núi non', icon: '🏔️', desc: 'Mountain' },
+        { id: 'snow', name: 'Tuyết rơi', icon: '❄️', desc: 'Snow' },
+        { id: 'desert', name: 'Sa mạc', icon: '🏜️', desc: 'Desert' },
+        { id: 'lavender', name: 'Cánh lavender', icon: '🟣', desc: 'Lavender' },
+        { id: 'cherry-blossom', name: 'Hoa anh đào', icon: '🌸', desc: 'Sakura' },
+        { id: 'autumn', name: 'Mùa thu', icon: '🍂', desc: 'Autumn' },
+        { id: 'castle', name: 'Lâu đài', icon: '🏰', desc: 'Castle' },
+        { id: 'villa', name: 'Biệt thự', icon: '🏡', desc: 'Villa' },
+        { id: 'cruise', name: 'Du thuyền', icon: '🚢', desc: 'Cruise' },
+        { id: 'airplane', name: 'Máy bay', icon: '✈️', desc: 'Airplane' },
+        { id: 'train', name: 'Tàu hỏa', icon: '🚂', desc: 'Train' },
+        { id: 'skyscraper', name: 'Tòa nhà cao', icon: '🏢', desc: 'Tower' },
+        { id: 'farm', name: 'Nông trại', icon: '🌾', desc: 'Farm' },
+        { id: 'greenhouse', name: 'Nhà kính', icon: '🏠', desc: 'Greenhouse' },
+    ];
 
     // Influencer attributes
     const [influencerGender, setInfluencerGender] = useState<string>('Female');
@@ -1087,7 +1211,7 @@ const App = () => {
         return true;
     };
 
-    const handleTabChange = (tab: 'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer') => {
+    const handleTabChange = (tab: 'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer' | 'change-background') => {
         setActiveTab(tab);
         setError(null);
         setIsDownloadMenuOpen(false);
@@ -2106,10 +2230,12 @@ QUY TẮC QUAN TRỌNG:
                 ]
             };
 
-            const response = await ai.models.generateContent({
+            const response = await generateImageWithRetry({
+                ai,
                 model: selectedModel,
-                contents: contents,
+                contents,
                 config: { responseModalities: [Modality.IMAGE] },
+                fallbackModels
             });
 
             const firstPart = response.candidates?.[0]?.content?.parts?.[0];
@@ -2120,10 +2246,172 @@ QUY TẮC QUAN TRỌNG:
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
+            const overloadMessage = isOverloadedError(err)
+                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-3-flash-preview).'
+                : null;
             console.error('Face swap error:', err);
             setError(`Face swap thất bại: ${errorMessage}`);
+            if (overloadMessage) {
+                setError(`Face swap that bai: ${overloadMessage}`);
+            }
         } finally {
             setIsSwapping(false);
+        }
+    };
+
+    // Change Background Handler
+    const handleChangeBackground = async () => {
+        if (!bgSourceFile) {
+            setError('Vui lòng tải lên ảnh người mẫu!');
+            return;
+        }
+        if (!customBgFile && !selectedBackground) {
+            setError('Vui lòng chọn hoặc tải lên bối cảnh!');
+            return;
+        }
+
+        setIsChangingBg(true);
+        setError(null);
+
+        try {
+            const activeKey = getActiveKey(apiSettings.provider);
+            const selectedModel = apiSettings.models[apiSettings.provider];
+            const ai = new GoogleGenAI({ apiKey: activeKey! });
+
+            const fallbackModels = apiSettings.provider === 'gemini'
+                ? (selectedModel === 'gemini-3-pro-image-preview'
+                    ? ['gemini-3-flash-preview']
+                    : ['gemini-3-pro-image-preview'])
+                : [];
+
+            console.log('Change Background - Source:', bgSourceFile?.name);
+
+            // Prepare image parts
+            const sourcePart = await fileToGenerativePart(bgSourceFile, 'bg-change-source');
+
+            // Get background name for the prompt
+            let bgName = 'bối cảnh mới';
+            let bgDescription = '';
+            let isTransparent = false;
+            
+            if (customBgFile) {
+                bgName = 'nền tùy chỉnh được tải lên';
+                bgDescription = 'Sử dụng chính xác nền được cung cấp';
+            } else if (selectedBackground === 'random') {
+                bgName = 'bối cảnh ngẫu nhiên';
+                bgDescription = 'Tự động chọn bối cảnh đẹp và phù hợp với trang phục';
+            } else if (selectedBackground === 'transparent') {
+                isTransparent = true;
+                bgName = 'NỀN TRONG SUỐNG (transparent background)';
+            } else {
+                const preset = backgroundPresets.find(b => b.id === selectedBackground);
+                if (preset) {
+                    bgName = preset.name;
+                    bgDescription = preset.desc;
+                }
+            }
+
+            // Build generation instruction
+            const poseInstruction = generationSettings.changePose
+                ? 'QUAN TRỌNG - THAY ĐỔI TƯ THẾ: Đặt nhân vật vào pose/thái độ phù hợp với bối cảnh mới. Nếu là bãi biển thì đứng thoải mái, nếu là phòng gym thì tạo dáng tập, nếu là văn phòng thì đứng/chỗ ngồi chuyên nghiệp. Tạo pose tự nhiên, phù hợp với không gian.'
+                : '- Giữ nguyên tư thế và pose của nhân vật gốc';
+
+            const expressionInstruction = generationSettings.changeExpression
+                ? 'QUAN TRỌNG - THAY ĐỔI BIỂU CẢM: Tạo biểu cảm khuôn mặt phù hợp với không khí của bối cảnh. Nếu là bãi biển thì vui vẻ, thư giãn; nếu là văn phòng thì nghiêm túc, chuyên nghiệp; nếu là quán cà phê thì nhẹ nhàng, thoải mái. Biểu cảm tự nhiên, mắt mở rõ, miệng cười nhẹ hoặc neutral.'
+                : '- Giữ nguyên biểu cảm khuôn mặt tự nhiên';
+
+            const fullBodyInstruction = generationSettings.generateFullBody
+                ? 'QUAN TRỌNG: Hiển thị ĐẦY ĐỦ TOÀN THÂN nhân vật từ đầu đến chân, không cắt cụt. Nếu ảnh gốc chỉ có nửa thân, HÃY TÁI TẠO phần còn thiếu để có ảnh toàn thân hoàn chỉnh.'
+                : '- Giữ nguyên phần thân hiển thị trong ảnh gốc';
+
+            const prompt = `Bạn là chuyên gia AI về chỉnh sửa ảnh và thay đổi background chuyên nghiệp.
+
+NHIỆM VỤ: ${isTransparent ? 'Tạo ảnh với NỀN TRONG SUỐT (transparent background), chỉ giữ lại nhân vật' : `Đặt nhân vật trong ảnh vào ${bgName} mới`}
+
+${fullBodyInstruction}
+
+${poseInstruction}
+
+${expressionInstruction}
+
+QUY TRÌNH XỬ LÝ:
+1. PHÂN TÍCH:
+   - Nhận diện chính xác nhân vật trong ảnh (bao gồm tóc, trang phục, phụ kiện)
+   - Tách nhân vật ra khỏi nền gốc một cách sạch sẽ
+   - Đánh giá đặc điểm trang phục và phong cách nhân vật
+
+2. ÁP DỤNG VÀO BỐI CẢNH MỚI:
+   ${isTransparent 
+      ? '- Tạo nền TRONG SUỐT, loại bỏ hoàn toàn background, chỉ giữ lại nhân vật với viền sạch' 
+      : customBgFile 
+          ? `- Sử dụng chính xác ảnh nền được cung cấp, đặt nhân vật vào đúng vị trí phù hợp`
+          : selectedBackground === 'random' 
+              ? `- Tự động chọn và tạo bối cảnh đẹp, chuyên nghiệp, phù hợp với nhân vật`
+              : `- Tạo ${bgName}: ${bgDescription}`}
+   - Đảm bảo nhân vật hòa hợp tự nhiên với không gian mới
+   - Điều chỉnh kích thước và tỷ lệ nhân vật phù hợp với bối cảnh
+   - Nếu cần tạo toàn thân, tái tạo phần chân còn thiếu một cách tự nhiên
+
+3. TỐI ƯU CHẤT LƯỢNG:
+   - Ánh sáng và bóng đổ tự nhiên, phù hợp với không gian mới
+   - Độ phân giải cao, chi tiết sắc nét
+   - Màu sắc hài hòa giữa nhân vật và bối cảnh
+
+QUY TẮC QUAN TRỌNG:
+- Giữ nguyên DANH TÍNH, HÌNH DÁNG CƠ THỂ và TRANG PHỤC của nhân vật gốc
+- Chỉ thay đổi bối cảnh nền, KHÔNG thay đổi cơ thể, trang phục, khuôn mặt
+- Kết quả phải tự nhiên, không có dấu hiệu ghép nối
+- Da có kết cấu tự nhiên, không bị "da nhựa" hay quá mịn
+- Nếu có nền trong suốt, đảm bảo viền nhân vật sạch sẽ, không có bóng hay vết cắt
+
+ĐÂY LÀ ẢNH NHÂN VẬT CẦN ĐẶT VÀO BỐI CẢNH MỚI:`;
+
+            let contents: any = {
+                parts: [
+                    { text: prompt },
+                    sourcePart
+                ]
+            };
+
+            // Add custom background if uploaded
+            if (customBgFile) {
+                const bgPart = await fileToGenerativePart(customBgFile, 'bg-change-custom-bg');
+                contents.parts.push({ text: '\n\nĐÂY LÀ ẢNH NỀN MUỐN SỬ DỤNG:' });
+                contents.parts.push(bgPart);
+            } else if (selectedBackground !== 'random') {
+                // Add reference to selected background style
+                const preset = backgroundPresets.find(b => b.id === selectedBackground);
+                if (preset) {
+                    contents.parts.push({ text: `\n\nYÊU CẦU BỐI CẢNH: Tạo ${preset.name} với phong cách ${preset.desc}` });
+                }
+            }
+
+            const response = await generateImageWithRetry({
+                ai,
+                model: selectedModel,
+                contents,
+                config: { responseModalities: [Modality.IMAGE] },
+                fallbackModels
+            });
+
+            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
+            if (firstPart && firstPart.inlineData) {
+                setBgResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
+            } else {
+                throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
+            const overloadMessage = isOverloadedError(err)
+                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-3-flash-preview).'
+                : null;
+            console.error('Change background error:', err);
+            setError(`Thay đổi bối cảnh thất bại: ${errorMessage}`);
+            if (overloadMessage) {
+                setError(`Thay đổi bối cảnh thất bại: ${overloadMessage}`);
+            }
+        } finally {
+            setIsChangingBg(false);
         }
     };
 
@@ -2137,6 +2425,11 @@ QUY TẮC QUAN TRỌNG:
             const activeKey = getActiveKey(apiSettings.provider);
             const selectedModel = apiSettings.models[apiSettings.provider];
             const ai = new GoogleGenAI({ apiKey: activeKey! });
+            const fallbackModels = apiSettings.provider === 'gemini'
+                ? (selectedModel === 'gemini-3-pro-image-preview'
+                    ? ['gemini-3-flash-preview']
+                    : ['gemini-3-pro-image-preview'])
+                : [];
 
             const refInstructions = buildInfluencerRefInstructions();
             const prompt = influencerPrompt.trim()
@@ -2280,6 +2573,12 @@ QUY TẮC QUAN TRỌNG:
                     onClick={() => handleTabChange('ai-influencer')}
                 >
                     👤 AI Influencer
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'change-background' ? 'active' : ''}`}
+                    onClick={() => handleTabChange('change-background')}
+                >
+                    🏞️ Đổi Bối Cảnh
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'swap-face' ? 'active' : ''}`}
@@ -3100,6 +3399,266 @@ QUY TẮC QUAN TRỌNG:
                                 >
                                     📤 Nạp vào Try-on
                                 </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                        if (swapResult) {
+                                            handleAutoFixSkin(swapResult);
+                                        }
+                                    }}
+                                >
+                                    ✨ Fix da nhựa
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                        if (swapResult) {
+                                            handleAutoBreastAug(swapResult);
+                                        }
+                                    }}
+                                >
+                                    👙 Nâng ngực
+                                </button>
+                            </div>
+                        </section>
+                    )}
+                </main>
+            )}
+
+            {/* Change Background */}
+            {activeTab === 'change-background' && (
+                <main className="workflow-container">
+                    <section className="step-card full-width">
+                        <h2>🏞️ Thay Đổi Bối Cảnh</h2>
+                        <p className="section-desc">
+                            Tải ảnh người mẫu lên và đặt vào bối cảnh mới. Bạn có thể tải ảnh nền riêng hoặc chọn từ 20 môi trường có sẵn.
+                        </p>
+
+                        {/* Source and Background Images */}
+                        <div className="dual-upload-container">
+                            <div className="upload-column">
+                                <h4>📷 Ảnh Người Mẫu</h4>
+                                <ImageUploader
+                                    image={bgSourcePreview}
+                                    onImageSelect={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setBgSourceFile(file);
+                                            setBgSourcePreview(URL.createObjectURL(file));
+                                        }
+                                    }}
+                                    onRemove={() => { setBgSourceFile(null); setBgSourcePreview(null); }}
+                                >
+                                    <p className="upload-hint">+ Tải ảnh người mẫu</p>
+                                </ImageUploader>
+                            </div>
+
+                            <div className="upload-column">
+                                <h4>🖼️ Ảnh Nền (Tùy chọn)</h4>
+                                <ImageUploader
+                                    image={customBgPreview}
+                                    onImageSelect={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setCustomBgFile(file);
+                                            setCustomBgPreview(URL.createObjectURL(file));
+                                            setSelectedBackground(null);
+                                        }
+                                    }}
+                                    onRemove={() => { setCustomBgFile(null); setCustomBgPreview(null); }}
+                                >
+                                    <p className="upload-hint">+ Tải ảnh nền riêng</p>
+                                </ImageUploader>
+                                {!customBgPreview && (
+                                    <p className="upload-hint" style={{ marginTop: '8px', fontSize: '0.85rem', color: '#888' }}>
+                                        Hoặc chọn bối cảnh bên dưới
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Background Preset Selector */}
+                        {!customBgPreview && (
+                            <div className="background-selector-section" style={{ marginTop: '1.5rem' }}>
+                                <h3 className="subsection-title">🎨 Chọn Bối Cảnh (55 môi trường)</h3>
+                                
+                                <div className="background-grid">
+                                    {/* Random option */}
+                                    <button
+                                        className={`bg-preset-btn random-bg ${selectedBackground === 'random' ? 'selected' : ''}`}
+                                        onClick={() => { setSelectedBackground('random'); setCustomBgFile(null); setCustomBgPreview(null); }}
+                                    >
+                                        <span className="bg-preset-icon">🎲</span>
+                                        <span className="bg-preset-name">Ngẫu nhiên</span>
+                                        <span className="bg-preset-desc">AI tự chọn</span>
+                                    </button>
+
+                                    {/* Transparent option */}
+                                    <button
+                                        className={`bg-preset-btn ${selectedBackground === 'transparent' ? 'selected' : ''}`}
+                                        onClick={() => { setSelectedBackground('transparent'); setCustomBgFile(null); setCustomBgPreview(null); }}
+                                    >
+                                        <span className="bg-preset-icon">💎</span>
+                                        <span className="bg-preset-name">Trong suốt</span>
+                                        <span className="bg-preset-desc">Xóa nền</span>
+                                    </button>
+
+                                    {/* All presets */}
+                                    {backgroundPresets.filter(bg => bg.id !== 'transparent').map((bg) => (
+                                        <button
+                                            key={bg.id}
+                                            className={`bg-preset-btn ${selectedBackground === bg.id ? 'selected' : ''}`}
+                                            onClick={() => { setSelectedBackground(bg.id); setCustomBgFile(null); setCustomBgPreview(null); }}
+                                        >
+                                            <span className="bg-preset-icon">{bg.icon}</span>
+                                            <span className="bg-preset-name">{bg.name}</span>
+                                            <span className="bg-preset-desc">{bg.desc}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Selected background indicator */}
+                        {(customBgPreview || selectedBackground) && (
+                            <div className="selected-bg-indicator" style={{ marginTop: '1rem', padding: '1rem', background: '#2a2a2a', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', border: '1px solid #444' }}>
+                                <span style={{ fontSize: '1.5rem' }}>
+                                    {customBgPreview ? '🖼️' : (selectedBackground === 'random' ? '🎲' : backgroundPresets.find(b => b.id === selectedBackground)?.icon)}
+                                </span>
+                                <strong style={{ color: '#fff', fontSize: '1rem' }}>
+                                    {customBgPreview ? 'Nền tùy chỉnh' : (selectedBackground === 'random' ? 'Chế độ ngẫu nhiên' : backgroundPresets.find(b => b.id === selectedBackground)?.name)}
+                                </strong>
+                                <button 
+                                    className="btn btn-small btn-secondary" 
+                                    style={{ marginLeft: 'auto' }}
+                                    onClick={() => { setCustomBgFile(null); setCustomBgPreview(null); setSelectedBackground(null); }}
+                                >
+                                    Thay đổi
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Advanced Settings */}
+                        <div className="advanced-section compact" style={{ marginTop: '1.5rem' }}>
+                            <h3 className="subsection-title">⚙️ Cài đặt tạo ảnh</h3>
+
+                            <div className="settings-row">
+                                <div className="setting-group compact">
+                                    <label className="setting-label">📐 Tỷ lệ ảnh</label>
+                                    <div className="toggle-group">
+                                        <button
+                                            className={`toggle-btn small ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                            onClick={() => setAspectRatio('9:16')}
+                                        >
+                                            📱 9:16
+                                        </button>
+                                        <button
+                                            className={`toggle-btn small ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                            onClick={() => setAspectRatio('16:9')}
+                                        >
+                                            💻 16:9
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="settings-row options-row">
+                                <button
+                                    className={`option-chip ${generationSettings.changePose ? 'active' : ''}`}
+                                    onClick={() => toggleGenerationSetting('changePose')}
+                                >
+                                    {generationSettings.changePose && <span className="chip-check">✓</span>}
+                                    <span>💃 Đổi tư thế</span>
+                                </button>
+
+                                <button
+                                    className={`option-chip ${generationSettings.changeExpression ? 'active' : ''}`}
+                                    onClick={() => toggleGenerationSetting('changeExpression')}
+                                >
+                                    {generationSettings.changeExpression && <span className="chip-check">✓</span>}
+                                    <span>😊 Đổi biểu cảm</span>
+                                </button>
+
+                                <button
+                                    className={`option-chip ${generationSettings.generateFullBody ? 'active' : ''}`}
+                                    onClick={() => toggleGenerationSetting('generateFullBody')}
+                                >
+                                    {generationSettings.generateFullBody && <span className="chip-check">✓</span>}
+                                    <span>🦵 Toàn thân</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Action Button */}
+                        <div className="action-section" style={{ marginTop: '1.5rem' }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleChangeBackground}
+                                disabled={!bgSourceFile || (!customBgFile && !selectedBackground) || isChangingBg}
+                                style={{
+                                    padding: '16px 32px',
+                                    fontSize: '1.1rem',
+                                    background: 'linear-gradient(135deg, #bb86fc, #03dac6)'
+                                }}
+                            >
+                                {isChangingBg ? '🔄 Đang xử lý...' : '🚀 Thay Đổi Bối Cảnh'}
+                            </button>
+                        </div>
+                    </section>
+
+                    {/* Result Display - Full Width */}
+                    {(isChangingBg || bgResult) && (
+                        <section className="result-card full-width">
+                            <h2>🏞️ Kết Quả Thay Đổi Bối Cảnh</h2>
+
+                            {/* Before-After Slider */}
+                            <div className="side-by-side-container">
+                                <div className="side-by-side-item">
+                                    <h4 className="side-by-side-label">Trước / Sau</h4>
+                                    <BeforeAfterSlider
+                                        beforeSrc={bgSourcePreview}
+                                        afterSrc={bgResult}
+                                        beforeAlt="Ảnh gốc"
+                                        afterAlt="Kết quả thay đổi bối cảnh"
+                                        isLoading={isChangingBg}
+                                        loadingText="Đang xử lý thay đổi bối cảnh..."
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="action-buttons" style={{ justifyContent: 'center', marginTop: '1.5rem' }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleDownload(bgResult, 'change-background', '4k')}
+                                >
+                                    💾 Tải ảnh PNG (4K)
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={async () => {
+                                        if (bgResult) {
+                                            const file = await dataUrlToFile(bgResult, 'bg-changed-tryon.png');
+                                            if (file) {
+                                                setModelFile(file);
+                                                setModelPreview(bgResult);
+                                                setActiveTab('try-on');
+                                            }
+                                        }
+                                    }}
+                                >
+                                    📤 Nạp vào Try-on
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                        if (bgResult) {
+                                            handleAutoFixSkin(bgResult);
+                                        }
+                                    }}
+                                >
+                                    ✨ Fix Da Nhựa
+                                </button>
                             </div>
                         </section>
                     )}
@@ -3589,3 +4148,5 @@ if (container) {
     const root = createRoot(container);
     root.render(<App />);
 }
+
+

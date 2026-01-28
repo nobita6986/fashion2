@@ -2020,6 +2020,33 @@ body {
     margin-top: 1rem;
 }
 
+/* Tăng kích thước kết quả gấp 2 */
+.result-card .side-by-side-item .image-upload-area {
+    aspect-ratio: 1;
+    min-height: 448px;
+    max-height: 600px;
+}
+
+.result-card .result-display {
+    min-height: 448px;
+    max-height: 600px;
+}
+
+.result-card .before-after-slider {
+    min-height: 448px;
+    max-height: 600px;
+}
+
+.result-placeholder {
+    min-height: 448px;
+    max-height: 600px;
+}
+
+.result-card.full-width .before-after-slider,
+.result-card.full-width .side-by-side-item {
+    transform: scale(1);
+}
+
 /* Update uploader wrapper for side-by-side */
 .side-by-side-item .uploader-wrapper {
     gap: 0;
@@ -2031,7 +2058,7 @@ body {
 
 .side-by-side-item .image-upload-area {
     aspect-ratio: 1;
-    min-height: 280px;
+    min-height: 448px;
 }
 
 /* Responsive for side-by-side */
@@ -2049,7 +2076,7 @@ body {
     .result-display,
     .before-after-slider,
     .side-by-side-item .image-upload-area {
-        min-height: 250px;
+        min-height: 350px;
     }
 
     .before-after-slider,
@@ -2068,7 +2095,7 @@ body {
     .result-display,
     .before-after-slider,
     .side-by-side-item .image-upload-area {
-        min-height: 200px;
+        min-height: 280px;
     }
 
     .before-after-slider,
@@ -2475,4 +2502,145 @@ img {
 
 .before-after-label.after {
     right: 10px;
+}
+
+/* ===== CHANGE BACKGROUND STYLES ===== */
+
+.background-selector-section {
+    margin-top: 1.5rem;
+}
+
+.background-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+    gap: 6px;
+    margin-top: 0.75rem;
+}
+
+.bg-preset-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 6px;
+    background: #2a2a2a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.bg-preset-btn:hover {
+    background: #333;
+    border-color: #555;
+    transform: translateY(-1px);
+}
+
+.bg-preset-btn.selected {
+    background: linear-gradient(135deg, rgba(187, 134, 252, 0.2), rgba(3, 218, 198, 0.2));
+    border-color: #bb86fc;
+    box-shadow: 0 2px 8px rgba(187, 134, 252, 0.3);
+}
+
+.bg-preset-icon {
+    font-size: 1.2rem;
+    margin-bottom: 4px;
+}
+
+.bg-preset-name {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #ddd;
+    margin-bottom: 2px;
+    line-height: 1.2;
+}
+
+.bg-preset-desc {
+    font-size: 0.55rem;
+    color: #666;
+    line-height: 1.2;
+}
+
+.random-bg {
+    background: linear-gradient(135deg, #2a2a2a, #1f1f1f);
+}
+
+.random-bg .bg-preset-icon {
+    font-size: 1.4rem;
+}
+
+.random-bg.selected {
+    background: linear-gradient(135deg, rgba(255, 152, 0, 0.2), rgba(255, 193, 7, 0.2));
+    border-color: #ff9800;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+}
+
+/* Upload column styles */
+.upload-column {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.upload-column h4 {
+    font-size: 1rem;
+    color: #fff;
+    margin: 0;
+}
+
+.upload-hint {
+    font-size: 0.9rem;
+    color: #888;
+    text-align: center;
+    margin: 0;
+}
+
+.selected-bg-indicator {
+    background: #2a2a2a;
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    border: 1px solid #444;
+}
+
+/* Responsive for background grid */
+@media (max-width: 768px) {
+    .background-grid {
+        grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
+        gap: 5px;
+    }
+
+    .bg-preset-btn {
+        padding: 6px 4px;
+    }
+
+    .bg-preset-icon {
+        font-size: 1rem;
+        margin-bottom: 2px;
+    }
+
+    .bg-preset-name {
+        font-size: 0.6rem;
+    }
+
+    .bg-preset-desc {
+        font-size: 0.5rem;
+    }
+
+    .random-bg .bg-preset-icon {
+        font-size: 1.2rem;
+    }
+
+    .dual-upload-container {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .background-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
 }
