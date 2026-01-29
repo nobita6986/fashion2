@@ -2157,6 +2157,12 @@ to remove the artificial plastic look while maintaining all original qualities.
             const selectedModel = apiSettings.models[apiSettings.provider];
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
+            const fallbackModels = apiSettings.provider === 'gemini'
+                ? (selectedModel === 'gemini-3-pro-image-preview'
+                    ? ['gemini-3-flash-preview']
+                    : ['gemini-3-pro-image-preview'])
+                : [];
+
             // Determine source and target based on hot-swap
             const targetFile = isHotSwap ? faceSourceFile : modelFile;
             const sourceFile = isHotSwap ? modelFile : faceSourceFile;
@@ -3027,6 +3033,22 @@ QUY TẮC QUAN TRỌNG:
                             >
                                 ✨ Fix Da Nhựa
                             </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={async () => {
+                                    if (finalImage) {
+                                        const file = await dataUrlToFile(finalImage, 'try-on-bg-change.png');
+                                        if (file) {
+                                            setBgSourceFile(file);
+                                            setBgSourcePreview(finalImage);
+                                            handleTabChange('change-background');
+                                        }
+                                    }
+                                }}
+                                style={{ background: 'linear-gradient(135deg, #ff9800, #f57c00)' }}
+                            >
+                                🏞️ Đổi bối cảnh
+                            </button>
                         </div>
                     )}
                 </section>
@@ -3418,6 +3440,22 @@ QUY TẮC QUAN TRỌNG:
                                     }}
                                 >
                                     👙 Nâng ngực
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={async () => {
+                                        if (swapResult) {
+                                            const file = await dataUrlToFile(swapResult, 'face-swap-bg-change.png');
+                                            if (file) {
+                                                setBgSourceFile(file);
+                                                setBgSourcePreview(swapResult);
+                                                handleTabChange('change-background');
+                                            }
+                                        }
+                                    }}
+                                    style={{ background: 'linear-gradient(135deg, #ff9800, #f57c00)' }}
+                                >
+                                    🏞️ Đổi bối cảnh
                                 </button>
                             </div>
                         </section>
