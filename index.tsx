@@ -1050,6 +1050,44 @@ const App = () => {
     // Accessories section collapsed/expanded state
     const [isAccessoriesExpanded, setIsAccessoriesExpanded] = useState(false);
 
+    // --- AI Clothing Generator States ---
+    const [selectedAIClothing, setSelectedAIClothing] = useState<string | null>(null);
+    const [isGeneratingClothing, setIsGeneratingClothing] = useState(false);
+    const [aiGeneratedClothing, setAiGeneratedClothing] = useState<string | null>(null);
+
+    // Danh sách 30 loại trang phục AI có thể generate
+    const aiClothingOptions = [
+        { id: 'sexy-bikini-1', name: 'Bikini Gợi Cảm 🔥', category: ' swimwear', description: 'Bikini hai mảnh gợi cảm' },
+        { id: 'sexy-bikini-2', name: 'Bikini Viền 🌴', category: 'swimwear', description: 'Bikini viền hoa văn' },
+        { id: 'sexy-bikini-3', name: 'Monokini 💎', category: 'swimwear', description: 'Monokini một mảnh sexy' },
+        { id: 'sexy-dress-1', name: 'Đầm Ôm Sexy 💃', category: 'dress', description: 'Đầm ôm sát, gợi cảm' },
+        { id: 'sexy-dress-2', name: 'Đầm Xẻ Đùi 🌹', category: 'dress', description: 'Đầm dạ hội xẻ đùi' },
+        { id: 'sexy-dress-3', name: 'Đầm Lưới 🔥', category: 'dress', description: 'Đầm ren/lưới sexy' },
+        { id: 'sexy-top-1', name: 'Crop Top Ngắn 👚', category: 'top', description: 'Crop top ôm ngắn' },
+        { id: 'sexy-top-2', name: 'Bra Top 🔥', category: 'top', description: 'Bra top gợi cảm' },
+        { id: 'sexy-top-3', name: 'Corset Bustier 👗', category: 'top', description: 'Corset nịt ngực' },
+        { id: 'sexy-bottom-1', name: 'Quần Lót Cao 👙', category: 'bottom', description: 'Quần lót waist' },
+        { id: 'sexy-bottom-2', name: 'Quần Short Ngắn 🩳', category: 'bottom', description: 'Short mini sexy' },
+        { id: 'sexy-bottom-3', name: 'Skirt Mini 🎀', category: 'bottom', description: 'Váy mini ngắn' },
+        { id: 'lingerie-1', name: 'Lingerie Gợi Cảm 💋', category: 'lingerie', description: 'Bộ lingerie đầy đủ' },
+        { id: 'lingerie-2', name: 'Babydoll 🌸', category: 'lingerie', description: 'Babydoll mỏng nhẹ' },
+        { id: 'lingerie-3', name: 'Teddy Bodysuit 🔥', category: 'lingerie', description: 'Teddy bodysuit' },
+        { id: 'evening-gown-1', name: 'Váy Dạ Hội 👑', category: 'dress', description: 'Váy dạ hội sang trọng' },
+        { id: 'evening-gown-2', name: 'Váy Prom 🎓', category: 'dress', description: 'Váy prom thanh lịch' },
+        { id: 'evening-gown-3', name: 'Váy Gala 💎', category: 'dress', description: 'Váy gala cao cấp' },
+        { id: 'casual-1', name: 'Áo Thun + Quần 👕', category: 'casual', description: 'Bộ đồ thường ngày' },
+        { id: 'casual-2', name: 'Áo Sơ Mi + Váy 👚', category: 'casual', description: 'Bộ casual nữ tính' },
+        { id: 'casual-3', name: 'Hoodie + Quần Rộng 🧥', category: 'casual', description: 'Streetwear thoải mái' },
+        { id: 'formal-1', name: 'Vest Công Sở 👔', category: 'formal', description: 'Bộ vest professional' },
+        { id: 'formal-2', name: 'Đầm Công Sở 💼', category: 'formal', description: 'Đầm office thanh lịch' },
+        { id: 'formal-3', name: 'Blazer + Chân Váy 👗', category: 'formal', description: 'Set blazer chic' },
+        { id: 'sport-1', name: 'Đồ Thể Thao 🏃', category: 'sport', description: 'Bộ sport năng động' },
+        { id: 'sport-2', name: 'Yoga Outfit 🧘', category: 'sport', description: 'Đồ yoga ôm sát' },
+        { id: 'sport-3', name: 'Bikini Thể Thao 🏊', category: 'swimwear', description: 'Sport bikini' },
+        { id: 'winter-1', name: 'Áo Len Dày 🧶', category: 'winter', description: 'Áo len ấm áp' },
+        { id: 'winter-2', name: 'Áo Khoác Lông 🦊', category: 'winter', description: 'Lông cừu sang trọng' },
+    ];
+
     // --- Face Swap States ---
     const [faceSourceFile, setFaceSourceFile] = useState<File | null>(null);
     const [faceSourcePreview, setFaceSourcePreview] = useState<string | null>(null);
@@ -2142,6 +2180,103 @@ to remove the artificial plastic look while maintaining all original qualities.
         }
     };
 
+    // AI Generate Clothing Function
+    const handleAIGenerateClothing = async () => {
+        if (!selectedAIClothing) {
+            setError('Vui lòng chọn loại trang phục!');
+            return;
+        }
+
+        setIsGeneratingClothing(true);
+        setError(null);
+        setAiGeneratedClothing(null);
+
+        try {
+            const activeKey = getActiveKey(apiSettings.provider);
+            const selectedModel = apiSettings.models[apiSettings.provider];
+            const ai = new GoogleGenAI({ apiKey: activeKey! });
+
+            const fallbackModels = apiSettings.provider === 'gemini'
+                ? (selectedModel === 'gemini-3-pro-image-preview'
+                    ? ['gemini-3-flash-preview']
+                    : ['gemini-3-pro-image-preview'])
+                : [];
+
+            // Find the selected clothing option
+            const clothingOption = aiClothingOptions.find(opt => opt.id === selectedAIClothing);
+            if (!clothingOption) {
+                throw new Error('Không tìm thấy trang phục đã chọn');
+            }
+
+            console.log('AI Generating Clothing:', clothingOption.name);
+
+            // Build prompt for clothing generation
+            const prompt = `You are a professional fashion photographer and designer.
+
+MISSION: Generate a high-quality, photorealistic image of ${clothingOption.description}.
+
+REQUIREMENTS:
+- Detailed, fashion-forward ${clothingOption.category} piece
+- High-quality fabric texture and draping
+- Professional studio lighting
+- Clean, minimalist background (solid color)
+- Photorealistic, 4K quality
+- Natural shadows and highlights
+- The clothing should look like it's ready to be worn
+- Detailed stitching, patterns, and design elements visible
+
+OUTPUT: A single, high-quality image of the ${clothingOption.name} on a transparent/white background, centered and well-lit.`;
+
+            const response = await ai.models.generateContent({
+                model: selectedModel,
+                contents: {
+                    parts: [{ text: prompt }],
+                },
+                config: { responseModalities: [Modality.IMAGE] },
+                fallbackModels
+            });
+
+            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
+            if (firstPart && firstPart.inlineData) {
+                const generatedImage = `data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`;
+                setAiGeneratedClothing(generatedImage);
+            } else {
+                throw new Error("Không thể tạo trang phục. Vui lòng thử lại.");
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
+            const overloadMessage = isOverloadedError(err)
+                ? 'Model is overloaded (503). Please retry or switch model in Settings.'
+                : null;
+            console.error('AI clothing generation error:', err);
+            setError(`Tạo trang phục thất bại: ${errorMessage}`);
+            if (overloadMessage) {
+                setError(`Tạo trang phục thất bại: ${overloadMessage}`);
+            }
+        } finally {
+            setIsGeneratingClothing(false);
+        }
+    };
+
+    // Apply AI generated clothing to try-on
+    const applyAIGeneratedClothing = (type: 'top' | 'bottom' | 'skirt') => {
+        if (!aiGeneratedClothing) {
+            setError('Chưa có trang phục được tạo!');
+            return;
+        }
+
+        if (type === 'top') {
+            setTopImage(aiGeneratedClothing);
+        } else if (type === 'bottom') {
+            setBottomImage(aiGeneratedClothing);
+        } else if (type === 'skirt') {
+            setSkirtImage(aiGeneratedClothing);
+        }
+
+        setAiGeneratedClothing(null);
+        setSelectedAIClothing(null);
+    };
+
     // Face Swap Function
     const handleFaceSwap = async () => {
         if (!modelFile || !faceSourceFile) {
@@ -2646,6 +2781,105 @@ QUY TẮC QUAN TRỌNG:
                                     <p>+ Tải ảnh người mẫu</p>
                                 </ImageUploader>
                             </div>
+                        </div>
+
+                        {/* AI Clothing Generator Section */}
+                        <div className="ai-clothing-section">
+                            <h3 className="subsection-title">✨ Tạo Trang Phục Bằng AI (Tùy chọn)</h3>
+                            <p className="section-hint">Chọn trang phục từ danh sách, AI sẽ tự tạo ảnh trang phục cho bạn</p>
+
+                            <div className="ai-clothing-controls">
+                                <div className="clothing-select-wrapper">
+                                    <select
+                                        className="ai-clothing-select"
+                                        value={selectedAIClothing || ''}
+                                        onChange={(e) => setSelectedAIClothing(e.target.value || null)}
+                                    >
+                                        <option value="">-- Chọn loại trang phục --</option>
+                                        <optgroup label="🔥 Trang Phục Gợi Cảm">
+                                            <option value="sexy-bikini-1">Bikini Gợi Cảm</option>
+                                            <option value="sexy-bikini-2">Bikini Viền</option>
+                                            <option value="sexy-bikini-3">Monokini</option>
+                                            <option value="sexy-dress-1">Đầm Ôm Sexy</option>
+                                            <option value="sexy-dress-2">Đầm Xẻ Đùi</option>
+                                            <option value="sexy-dress-3">Đầm Lưới</option>
+                                            <option value="sexy-top-1">Crop Top Ngắn</option>
+                                            <option value="sexy-top-2">Bra Top</option>
+                                            <option value="sexy-top-3">Corset Bustier</option>
+                                            <option value="sexy-bottom-1">Quần Lót Cao</option>
+                                            <option value="sexy-bottom-2">Quần Short Ngắn</option>
+                                            <option value="sexy-bottom-3">Skirt Mini</option>
+                                        </optgroup>
+                                        <optgroup label="💋 Lingerie">
+                                            <option value="lingerie-1">Lingerie Gợi Cảm</option>
+                                            <option value="lingerie-2">Babydoll</option>
+                                            <option value="lingerie-3">Teddy Bodysuit</option>
+                                        </optgroup>
+                                        <optgroup label="👗 Váy Dạ Hội">
+                                            <option value="evening-gown-1">Váy Dạ Hội</option>
+                                            <option value="evening-gown-2">Váy Prom</option>
+                                            <option value="evening-gown-3">Váy Gala</option>
+                                        </optgroup>
+                                        <optgroup label="👕 Thường Ngày">
+                                            <option value="casual-1">Áo Thun + Quần</option>
+                                            <option value="casual-2">Áo Sơ Mi + Váy</option>
+                                            <option value="casual-3">Hoodie + Quần Rộng</option>
+                                        </optgroup>
+                                        <optgroup label="💼 Công Sở">
+                                            <option value="formal-1">Vest Công Sở</option>
+                                            <option value="formal-2">Đầm Công Sở</option>
+                                            <option value="formal-3">Blazer + Chân Váy</option>
+                                        </optgroup>
+                                        <optgroup label="🏃 Thể Thao">
+                                            <option value="sport-1">Đồ Thể Thao</option>
+                                            <option value="sport-2">Yoga Outfit</option>
+                                            <option value="sport-3">Bikini Thể Thao</option>
+                                        </optgroup>
+                                        <optgroup label="❄️ Mùa Đông">
+                                            <option value="winter-1">Áo Len Dày</option>
+                                            <option value="winter-2">Áo Khoác Lông</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+
+                                <button
+                                    className="btn btn-primary ai-generate-btn"
+                                    onClick={handleAIGenerateClothing}
+                                    disabled={!selectedAIClothing || isGeneratingClothing}
+                                >
+                                    {isGeneratingClothing ? '⏳ Đang tạo...' : '✨ Tạo Trang Phục'}
+                                </button>
+                            </div>
+
+                            {/* AI Generated Clothing Preview */}
+                            {aiGeneratedClothing && (
+                                <div className="ai-generated-preview">
+                                    <h4>🎨 Trang Phục Đã Tạo</h4>
+                                    <div className="ai-clothing-result">
+                                        <img src={aiGeneratedClothing} alt="AI Generated Clothing" />
+                                    </div>
+                                    <div className="ai-clothing-actions">
+                                        <button
+                                            className="btn btn-primary"
+                                            onClick={() => applyAIGeneratedClothing('top')}
+                                        >
+                                            👕 Dùng làm Áo
+                                        </button>
+                                        <button
+                                            className="btn btn-primary"
+                                            onClick={() => applyAIGeneratedClothing('bottom')}
+                                        >
+                                            👖 Dùng làm Quần
+                                        </button>
+                                        <button
+                                            className="btn btn-primary"
+                                            onClick={() => applyAIGeneratedClothing('skirt')}
+                                        >
+                                            👗 Dùng làm Váy
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Clothing Items Grid */}

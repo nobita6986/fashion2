@@ -1384,6 +1384,152 @@ body {
     margin-bottom: 2rem;
 }
 
+/* ===== AI CLOTHING GENERATOR STYLES ===== */
+
+.ai-clothing-section {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.ai-clothing-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.clothing-select-wrapper {
+    flex: 1;
+    min-width: 250px;
+}
+
+.ai-clothing-select {
+    width: 100%;
+    padding: 14px 16px;
+    background: #252525;
+    border: 1px solid #444;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.ai-clothing-select:hover {
+    border-color: #bb86fc;
+}
+
+.ai-clothing-select:focus {
+    outline: none;
+    border-color: #bb86fc;
+    box-shadow: 0 0 0 3px rgba(187, 134, 252, 0.2);
+}
+
+.ai-clothing-select optgroup {
+    background: #1a1a1a;
+    color: #fff;
+    font-weight: 600;
+}
+
+.ai-clothing-select option {
+    background: #252525;
+    color: #ddd;
+    padding: 10px;
+}
+
+.ai-generate-btn {
+    padding: 14px 24px !important;
+    background: linear-gradient(135deg, #bb86fc, #03dac6) !important;
+    font-weight: 600 !important;
+    white-space: nowrap;
+}
+
+.ai-generate-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(187, 134, 252, 0.4) !important;
+}
+
+.ai-generate-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.ai-generated-preview {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #333;
+}
+
+.ai-generated-preview h4 {
+    color: #bb86fc;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+}
+
+.ai-clothing-result {
+    background: #252525;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: center;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.ai-clothing-result img {
+    max-width: 100%;
+    max-height: 250px;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.ai-clothing-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.ai-clothing-actions .btn {
+    flex: 1;
+    min-width: 120px;
+    max-width: 180px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+}
+
+/* Responsive for AI Clothing Section */
+@media (max-width: 768px) {
+    .ai-clothing-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .clothing-select-wrapper {
+        min-width: 100%;
+    }
+
+    .ai-generate-btn {
+        width: 100%;
+    }
+
+    .ai-clothing-actions {
+        flex-direction: column;
+    }
+
+    .ai-clothing-actions .btn {
+        max-width: 100%;
+    }
+}
+
 .model-upload-container {
     max-width: 400px;
     margin: 0 auto;
