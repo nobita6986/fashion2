@@ -2191,41 +2191,51 @@ to remove the artificial plastic look while maintaining all original qualities.
 
             const prompt = `Bạn là chuyên gia AI về chỉnh sửa ảnh và face swap chuyên nghiệp.
 
-NHIỆM VỤ: Thay thế khuôn mặt của nhân vật trong ảnh đầu tiên bằng khuôn mặt từ ảnh thứ hai.
+NHIỆM VỤ: Thay thế khuôn mặt của nhân vật trong ảnh đầu tiên bằng khuôn mặt TỪ ẢNH THỨ HAI. ĐẢM BẢO LẤY CHÍNH XÁC KHUÔN MẶT TỪ ẢNH KHUÔN MẶT NGUỒN.
 
-QUY TRÌNH XỬ LÝ:
-1. PHÂN TÍCH:
-   - Nhận diện chính xác khuôn mặt trong ảnh nguồn (ảnh thứ 2 - khuôn mặt)
-   - Nhận diện vùng khuôn mặt trong ảnh đích (ảnh thứ 1 - nhân vật cần đổi mặt)
+QUY TRÌNH XỬ LÝ CHÍNH XÁC:
+1. PHÂN TÍCH KHUÔN MẶT NGUỒN (từ ảnh thứ 2):
+   - XÁC ĐỊNH CHÍNH XÁC vùng khuôn mặt trong ảnh
+   - TRÍCH XUẤT CHÍNH XÁC các đặc điểm sau:
+     + Hình dạng khuôn mặt (oval, vuông, trái xoan, dài, tròn)
+     + Đường viền xương gò má, xương hàm, cằm
+     + Hình dạng và kích thước mắt (mắt hạnh nhân, mắt tròn, kích thước lớn/nhỏ)
+     + Đường cong lông mày (cao/thấp, dày/mỏng, hình dạng)
+     + Hình dạng mũi (thẳng, gồ, rộng, hẹp, chiều dài)
+     + Hình dạng và độ dày môi (môi dày/mỏng, rộng/hẹp, độ cong)
+     + Màu da chính xác (tông màu, độ sáng/tối)
+     + Kết cấu da (mịn, thô, có đốm, tàn nhang)
+     + Màu và kiểu tóc (màu tự nhiên, màu nhuộm, độ dài, kiểu dáng)
+     + Đặc điểm nhận dạng (nốt ruồi, sẹo, nếp nhăn nếu có)
 
-2. TRÍCH XUẤT ĐẶC ĐIỂM KHUÔN MẶT NGUỒN:
-   - Đường nét khuôn mặt (xương gò má, cằm, mũi)
-   - Đặc điểm da (màu da, kết cấu, độ mịn)
-   - Biểu cảm và hình dạng mắt, môi, lông mày
-   - Màu tóc và kiểu tóc của khuôn mặt nguồn
+2. NHẬN DIỆN VÙNG KHUÔN MẶT TRONG ẢNH ĐÍCH (ảnh thứ 1):
+   - Xác định chính xác vị trí và ranh giới khuôn mặt cần thay thế
+   - Đánh giá góc độ và hướng khuôn mặt hiện tại
 
-3. ÁP DỤNG VÀO ẢNH ĐÍCH:
-   - Thay thế vùng khuôn mặt bằng khuôn mặt từ ảnh nguồn
-   - Đảm bảo góc độ và hướng khuôn mặt tự nhiên
-   - Blend mượt mà vùng da xung quanh
-   - Giữ nguyên phần thân và trang phục của ảnh gốc
+3. THAY THẾ KHUÔN MẶT CHÍNH XÁC:
+   - Áp dụng TẤT CẢ các đặc điểm khuôn mặt nguồn đã trích xuất
+   - Giữ nguyên tỷ lệ khuôn mặt phù hợp với cơ thể đích
+   - Điều chỉnh góc độ khuôn mặt nguồn cho khớp với tư thế cơ thể
+   - Blend mượt mà vùng da xung quanh, không để lại đường viền
+   - Giữ nguyên TỐI ĐA phần thân, trang phục, phụ kiện của ảnh gốc
 
 4. TỐI ƯU CHẤT LƯỢNG:
    ${poseInstruction}
    ${expressionInstruction}
    ${backgroundInstruction}
-   - Ánh sáng và bóng đổ tự nhiên, đồng nhất
-   - Độ phân giải cao, chi tiết sắc nét
+   - Ánh sáng và bóng đổ phải tự nhiên, đồng nhất với ảnh gốc
+   - Độ phân giải cao, chi tiết sắc nét (4K quality)
+   - Da có kết cấu tự nhiên, KHÔNG bị "da nhựa" hay quá mịn ảo
+   - Màu sắc hài hòa, khớp với tông màu tổng thể
 
-QUY TẮC QUAN TRỌNG:
-- Tuyệt đối giữ nguyên DANH TÍNH và HÌNH DÁNG CƠ THỂ của nhân vật gốc
-- Chỉ thay đổi khuôn mặt, KHÔNG thay đổi cơ thể, trang phục
-- Đảm bảo tỷ lệ khuôn mặt phù hợp với cơ thể
-- Kết quả phải tự nhiên, không có dấu hiệu chỉnh sửa
-- Da có kết cấu tự nhiên, không bị "da nhựa" hay quá mịn
-- Màu sắc hài hòa, không bị lệch màu
+QUY TẮC QUAN TRỌNG TUYỆT ĐỐI:
+- CHỈ thay đổi KHUÔN MẶT, KHÔNG thay đổi cơ thể, trang phục, hình dáng
+- GIỮ NGUYÊN danh tính và hình dáng cơ thể của nhân vật gốc
+- Đảm bảo tỷ lệ khuôn mặt PHÙ HỢP VÀ CÂN ĐỐI với cơ thể
+- Kết quả phải TỰ NHIÊN, không có dấu hiệu chỉnh sửa
+- Khuôn mặt mới phải GIỐNG CHÍNH XÁC khuôn mặt nguồn trong ảnh thứ 2
 
-ĐÂY LÀ ẢNH KHUÔN MẶT NGUỒN (nguồn khuôn mặt):`;
+TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
 
             const contents = {
                 parts: [
@@ -3248,6 +3258,9 @@ QUY TẮC QUAN TRỌNG:
                                 >
                                     <p className="upload-hint">+ Tải ảnh khuôn mặt thay thế</p>
                                 </ImageUploader>
+                                <p className="upload-directive" style={{ marginTop: '8px', fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
+                                    💡 Hướng dẫn: Upload ảnh có khuôn mặt rõ ràng, mắt mở, không đeo kính râm, ánh sáng tốt để AI trích xuất chính xác đặc điểm khuôn mặt
+                                </p>
                             </div>
                         </div>
 
