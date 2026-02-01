@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // --- Types ---
-type Provider = 'gemini' | 'grok';
+type Provider = 'gemini' | 'grok' | 'veo';
 
 interface ApiKeyEntry {
     id: string;
@@ -19,39 +19,103 @@ interface ApiSettings {
     keys: {
         gemini: ApiKeyEntry[];
         grok: ApiKeyEntry[];
+        veo: ApiKeyEntry[];
     };
     models: {
         gemini: string;
         grok: string;
+        veo: string;
     };
 }
+
+// --- Hand-on Types ---
+interface HandItem {
+    id: string;
+    name: string;
+    type: 'preset' | 'custom';
+}
+
+// Danh sách đồ vật phổ biến có thể cầm trên tay
+const HAND_ITEMS_PRESETS = [
+    { id: 'iphone', name: 'iPhone 📱' },
+    { id: 'android', name: 'Điện thoại Android 📱' },
+    { id: 'handbag', name: 'Túi xách nhỏ 👜' },
+    { id: 'tote-bag', name: 'Túi tote 🛍️' },
+    { id: 'clutch', name: 'Clutch bag 👝' },
+    { id: 'wallet', name: 'Ví da 👛' },
+    { id: 'coffee', name: 'Cốc cà phê ☕' },
+    { id: 'water', name: 'Chai nước 💧' },
+    { id: 'flower', name: 'Bó hoa 💐' },
+    { id: 'book', name: 'Sách/Book 📚' },
+    { id: 'laptop', name: 'Laptop 💻' },
+    { id: 'tablet', name: 'Máy tính bảng 📲' },
+    { id: 'camera', name: 'Máy ảnh 📷' },
+    { id: 'sunglasses', name: 'Kính râm 🕶️' },
+    { id: 'hat', name: 'Mũ nón 🎩' },
+    { id: 'balloon', name: 'Bóng bay 🎈' },
+    { id: 'gift', name: 'Quà tặng 🎁' },
+    { id: 'umbrella', name: 'Ô/Dù ☂️' },
+    { id: 'glasses', name: 'Kính đeo mắt 👓' },
+    { id: 'watch', name: 'Đồng hồ ⌚' },
+];
 
 // --- Constants ---
 const DEFAULT_SETTINGS: ApiSettings = {
     provider: 'gemini',
     keys: {
-        gemini: process.env.API_KEY 
-            ? [{ id: 'env-key', key: process.env.API_KEY, label: 'System Env', isActive: true, createdAt: Date.now() }] 
+        gemini: process.env.API_KEY
+            ? [{ id: 'env-key', key: process.env.API_KEY, label: 'System Env', isActive: true, createdAt: Date.now() }]
             : [],
-        grok: []
+        grok: [],
+        veo: []
     },
     models: {
-        gemini: 'gemini-3-pro-image-preview',
-        grok: 'grok-4-1-fast-reasoning'
+        gemini: 'gemini-3-pro-image',
+        grok: 'grok-4-1-fast-reasoning',
+        veo: 'veo-3-1-vertical'
     }
 };
 
 const MODEL_OPTIONS = {
     gemini: [
-        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Nano Banana Pro - Chuyên Ảnh)' },
-        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Mạnh nhất - Suy luận & Code)' },
-        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Tối ưu tốc độ & Chi phí)' }
+        { value: 'gemini-3-pro-image', label: 'Gemini 3 Pro Image (Nano Banana Pro - mới nhất, reasoning mạnh)' },
+        { value: 'gemini-2-5-flash-image', label: 'Gemini 2.5 Flash Image (Nano Banana - tốc độ/chi phí tối ưu)' },
+        { value: 'gemini-3-pro', label: 'Gemini 3 Pro (Text/Multimodal - Vibe Coding & Agentic mạnh)' },
+        { value: 'gemini-3-flash', label: 'Gemini 3 Flash (Mặc định mới - nhanh & thông minh cho text/code)' }
     ],
     grok: [
         { value: 'grok-4-1-fast-reasoning', label: 'Grok 4.1 Fast (Reasoning - Suy luận sâu)' },
         { value: 'grok-4-1-fast-non-reasoning', label: 'Grok 4.1 Fast (Instant - Tốc độ cao)' }
+    ],
+    veo: [
+        { value: 'veo-3-1-vertical', label: 'Veo 3.1 Vertical 9:16 (Shorts/Reels/TikTok, 4K, chuyển động chân thực)' },
+        { value: 'veo-3-1-horizontal', label: 'Veo 3.1 Horizontal 16:9 (YouTube, 4K, chuyển động chân thực)' },
+        { value: 'veo-3-1-ingredients', label: 'Veo 3.1 Ingredients (Ảnh/Phong cách → Video nhất quán)' }
     ]
 };
+
+const VEO3_PROMPT_LIBRARY = [
+    "Một video thời trang, cô gái đứng giữa khung hình, mặc váy nhẹ nhàng, hai tay thả lỏng, xoay nhẹ thân người, ánh mắt nhìn camera tự tin, camera pan ngang mượt, ánh sáng mềm điện ảnh",
+    "Một video thời trang, cô gái bước chậm về phía camera, váy chuyển động theo từng bước chân, gương mặt thư giãn, camera dolly-in nhẹ tạo cảm giác cao cấp",
+    "Một video thời trang, cô gái đứng trước gương toàn thân, một tay cầm điện thoại, tay còn lại chạm nhẹ vạt váy, xoay nhẹ người, ánh mắt nhìn vào gương, camera trượt ngang",
+    "Một video thời trang, cô gái đứng nghiêng 48 độ, tay đặt lên hông làm nổi bật form váy, quay đầu nhìn camera với nụ cười tinh tế, camera pan chậm, ánh sáng studio",
+    "Một video thời trang, cô gái bước ngang khung hình, dừng lại giữa cảnh, váy bay nhẹ theo chuyển động, ánh mắt nhìn trực diện camera, camera theo chuyển động mượt",
+    "Một video thời trang, cô gái đứng yên, khẽ xoay vai và thân trên để lộ chi tiết váy, ánh mắt dịu dàng nhìn camera, camera zoom nhẹ tạo chiều sâu",
+    "Một video thời trang, cô gái đứng cạnh cửa sổ, ánh sáng tự nhiên chiếu vào, cô xoay nhẹ người, váy bắt sáng mềm mại, camera pan ngang phong cách cinematic",
+    "Một video thời trang, cô gái quay lưng về phía camera, sau đó từ từ quay đầu lại, váy chuyển động nhẹ, ánh mắt chạm ống kính, camera di chuyển vòng cung",
+    "Một video thời trang, cô gái bước xuống bậc thềm, váy rũ tự nhiên theo từng bước, quay đầu nhìn camera với nụ cười nhẹ, camera góc thấp tạo cảm giác thời trang",
+    "Một video thời trang, cô gái đứng trước gương lớn, một tay đặt lên eo, tay còn lại thả lỏng, xoay nhẹ thân người, camera pan ngang làm nổi bật form dáng váy",
+    "Một video thời trang, cô gái đứng giữa khung hình, gió nhẹ làm váy bay tự nhiên, ánh mắt nhìn camera bình thản, camera trượt ngang chậm",
+    "Một video thời trang, cô gái nâng nhẹ vạt váy, xoay người nửa vòng, ánh mắt luôn hướng về camera, camera dolly theo chuyển động tạo cảm giác cao cấp",
+    "Một video thời trang, cô gái bước một bước về phía trước, váy chuyển động mềm mại, dừng lại và nhìn camera tự tin, camera dolly-in mượt",
+    "Một video thời trang, cô gái đứng nghiêng, tay chạm nhẹ vào chi tiết váy, đầu hơi nghiêng, nụ cười mỉm, camera zoom nhẹ nhấn mạnh sản phẩm",
+    "Một video thời trang, cô gái quay nhẹ tại chỗ, váy xoay theo chuyển động, ánh mắt gặp camera ở cuối vòng xoay, camera theo vòng tròn mượt",
+    "Một video thời trang, cô gái đứng cạnh lan can, một tay đặt lên lan can, tay kia thả lỏng, váy rũ tự nhiên, camera pan nhẹ kết hợp ánh sáng tự nhiên",
+    "Một video thời trang, cô gái bước chéo khung hình, váy bay nhẹ, dừng lại và xoay mặt về camera, biểu cảm tự tin, camera theo chuyển động",
+    "Một video thời trang, cô gái đứng yên, khẽ chỉnh lại vạt váy, sau đó nhìn lên camera với ánh mắt cuốn hút, camera tiến gần để nhấn chi tiết",
+    "Một video thời trang, cô gái đứng giữa không gian tối giản, váy màu trung tính, xoay nhẹ thân trên, ánh mắt nhìn camera với thần thái model, camera pan mượt",
+    "Một video thời trang, cô gái bước chậm về phía trước, váy chuyển động mềm theo từng bước, dừng lại giữa khung hình và mỉm cười nhẹ, camera dolly-in điện ảnh"
+];
 
 // --- Helper Functions ---
 // Enhanced fileToGenerativePart with robust validation and detailed logging
@@ -236,6 +300,28 @@ const urlToGenerativePart = async (url: string) => {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// --- Hand-on Helper Functions ---
+const getHandItemEmoji = (itemName: string): string => {
+    const nameLower = itemName.toLowerCase();
+    if (nameLower.includes('iphone') || nameLower.includes('điện thoại') || nameLower.includes('android')) return '📱';
+    if (nameLower.includes('túi') || nameLower.includes('bag')) return '👜';
+    if (nameLower.includes('ví') || nameLower.includes('wallet')) return '👛';
+    if (nameLower.includes('cà phê') || nameLower.includes('coffee')) return '☕';
+    if (nameLower.includes('nước') || nameLower.includes('water')) return '💧';
+    if (nameLower.includes('hoa') || nameLower.includes('flower')) return '💐';
+    if (nameLower.includes('sách') || nameLower.includes('book')) return '📚';
+    if (nameLower.includes('laptop')) return '💻';
+    if (nameLower.includes('tablet') || nameLower.includes('bảng')) return '📲';
+    if (nameLower.includes('máy ảnh') || nameLower.includes('camera')) return '📷';
+    if (nameLower.includes('kính') || nameLower.includes('sunglasses')) return '🕶️';
+    if (nameLower.includes('mũ') || nameLower.includes('hat')) return '🎩';
+    if (nameLower.includes('bóng') || nameLower.includes('balloon')) return '🎈';
+    if (nameLower.includes('quà') || nameLower.includes('gift')) return '🎁';
+    if (nameLower.includes('ô') || nameLower.includes('umbrella')) return '☂️';
+    if (nameLower.includes('đồng hồ') || nameLower.includes('watch')) return '⌚';
+    return '📦';
+};
+
 const extractGenAiErrorInfo = (err: unknown) => {
     const anyErr = err as any;
     const message = typeof anyErr?.message === 'string' ? anyErr.message : String(err);
@@ -294,6 +380,18 @@ const generateImageWithRetry = async ({
         }
         throw lastErr;
     }
+};
+
+const getGeminiImageFallbackModels = (selectedModel: string) => {
+    if (selectedModel === 'gemini-3-pro-image') return ['gemini-2-5-flash-image'];
+    if (selectedModel === 'gemini-2-5-flash-image') return ['gemini-3-pro-image'];
+    return ['gemini-3-pro-image', 'gemini-2-5-flash-image'];
+};
+
+const getVeoAspectRatio = (model: string) => {
+    if (model.includes('vertical')) return '9:16';
+    if (model.includes('horizontal')) return '16:9';
+    return undefined;
 };
 
 // Mask API Key for display
@@ -447,7 +545,7 @@ const SettingsModal = ({
                     <div className="form-group">
                         <label>Chọn Nhà Cung Cấp (Provider):</label>
                         <div className="provider-tabs">
-                            {(['gemini', 'grok'] as Provider[]).map(p => (
+                            {(['gemini', 'grok', 'veo'] as Provider[]).map(p => (
                                 <button
                                     key={p}
                                     className={`tab-btn small ${localSettings.provider === p ? 'active' : ''}`}
@@ -1006,22 +1104,37 @@ const App = () => {
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                
+
                 // MIGRATION LOGIC: Check if keys are strings (legacy format) and convert to array
                 const isLegacy = typeof parsed.keys?.gemini === 'string' || typeof parsed.keys?.openai === 'string';
-                
+
                 if (isLegacy) {
                     return {
                         ...DEFAULT_SETTINGS,
                         provider: parsed.provider || 'gemini',
                         keys: {
                             gemini: parsed.keys.gemini ? [{ id: 'legacy-gemini', key: parsed.keys.gemini, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
-                            grok: parsed.keys.grok ? [{ id: 'legacy-grok', key: parsed.keys.grok, label: 'Default Key', isActive: true, createdAt: Date.now() }] : []
+                            grok: parsed.keys.grok ? [{ id: 'legacy-grok', key: parsed.keys.grok, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
+                            veo: []
                         },
                         models: parsed.models || DEFAULT_SETTINGS.models
                     };
                 }
-                
+
+                // NEW MIGRATION: Ensure veo key exists
+                if (!parsed.keys?.veo) {
+                    parsed.keys = {
+                        ...parsed.keys,
+                        veo: []
+                    };
+                }
+                if (!parsed.models?.veo) {
+                    parsed.models = {
+                        ...parsed.models,
+                        veo: DEFAULT_SETTINGS.models.veo
+                    };
+                }
+
                 return parsed;
             } catch (e) {
                 return DEFAULT_SETTINGS;
@@ -1031,9 +1144,11 @@ const App = () => {
     });
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isGuideOpen, setIsGuideOpen] = useState(false);
+    const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
 
     // Tab State
-    const [activeTab, setActiveTab] = useState<'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer' | 'change-background'>('try-on');
+    const [activeTab, setActiveTab] = useState<'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer' | 'change-background' | 'veo3'>('try-on');
+    const [veo3SubTab, setVeo3SubTab] = useState<'single' | 'batch' | 'clone'>('single');
 
     // --- Try-On States (Mix & Match Mode) ---
     // Clothing items (optional uploads)
@@ -1043,6 +1158,10 @@ const App = () => {
     const [shoesImage, setShoesImage] = useState<string | null>(null);
     const [jewelryImage, setJewelryImage] = useState<string | null>(null);  // Trang sức
     const [bagImage, setBagImage] = useState<string | null>(null);          // Túi xách
+
+    // --- Hand-on States ---
+    const [handItems, setHandItems] = useState<HandItem[]>([]);
+    const [customHandItem, setCustomHandItem] = useState<string>('');
 
     // Reference images for fullset (up to 3 images for different angles/reference)
     const [refImages, setRefImages] = useState<(string | null)[]>([null, null, null]);
@@ -1107,7 +1226,49 @@ const App = () => {
     const [bgResult, setBgResult] = useState<string | null>(null);
     const [isChangingBg, setIsChangingBg] = useState(false);
     const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
+    const [selectedPose, setSelectedPose] = useState<string | null>(null);
+    const [changeBackgroundPrompt, setChangeBackgroundPrompt] = useState<string>('');
     const [showBgSelector, setShowBgSelector] = useState(false);
+
+    // --- Veo3 Video States ---
+    // Single Video
+    const [veo3SinglePrompt, setVeo3SinglePrompt] = useState('');
+    const [veo3SingleInputFile, setVeo3SingleInputFile] = useState<File | null>(null);
+    const [veo3SingleInputPreview, setVeo3SingleInputPreview] = useState<string | null>(null);
+    const [veo3SingleResultUrl, setVeo3SingleResultUrl] = useState<string | null>(null);
+    const [veo3IsGeneratingSingle, setVeo3IsGeneratingSingle] = useState(false);
+    const [veo3SingleProgress, setVeo3SingleProgress] = useState('');
+    const [veo3SingleModel, setVeo3SingleModel] = useState('veo-3.1-fast-generate-preview');
+    const [veo3SingleResolution, setVeo3SingleResolution] = useState<'720p' | '1080p'>('720p');
+    const [veo3SingleAspectRatio, setVeo3SingleAspectRatio] = useState('9:16');
+
+    // Clone Motion
+    const [veo3CloneSourceVideo, setVeo3CloneSourceVideo] = useState<File | null>(null);
+    const [veo3CloneSourceVideoPreview, setVeo3CloneSourceVideoPreview] = useState<string | null>(null);
+    const [veo3CloneTargetImage, setVeo3CloneTargetImage] = useState<File | null>(null);
+    const [veo3CloneTargetImagePreview, setVeo3CloneTargetImagePreview] = useState<string | null>(null);
+    const [veo3CloneMotionPrompt, setVeo3CloneMotionPrompt] = useState('');
+    const [veo3CloneModel, setVeo3CloneModel] = useState('veo-3.1-fast-generate-preview');
+    const [veo3CloneResolution, setVeo3CloneResolution] = useState<'720p' | '1080p'>('720p');
+    const [veo3CloneAspectRatio, setVeo3CloneAspectRatio] = useState('9:16');
+    const [veo3CloneResultUrl, setVeo3CloneResultUrl] = useState<string | null>(null);
+    const [veo3IsGeneratingClone, setVeo3IsGeneratingClone] = useState(false);
+    const [veo3CloneProgress, setVeo3CloneProgress] = useState('');
+    const [veo3IsAnalyzingVideo, setVeo3IsAnalyzingVideo] = useState(false);
+    const [veo3AnalyzedMotionPrompt, setVeo3AnalyzedMotionPrompt] = useState<string>('');
+
+    // Batch Video
+    const [veo3BatchPrompt, setVeo3BatchPrompt] = useState('');
+    const [veo3BatchInputFiles, setVeo3BatchInputFiles] = useState<File[]>([]);
+    const [veo3BatchInputPreviews, setVeo3BatchInputPreviews] = useState<string[]>([]);
+    const [veo3BatchVideoItems, setVeo3BatchVideoItems] = useState<any[]>([]);
+    const [veo3IsProcessingBatch, setVeo3IsProcessingBatch] = useState(false);
+    const [veo3BatchCurrentIndex, setVeo3BatchCurrentIndex] = useState(0);
+    const [veo3BatchTotal, setVeo3BatchTotal] = useState(0);
+    const [veo3BatchCurrentPrompt, setVeo3BatchCurrentPrompt] = useState('');
+    const [veo3BatchModel, setVeo3BatchModel] = useState('veo-3.1-fast-generate-preview');
+    const [veo3BatchResolution, setVeo3BatchResolution] = useState<'720p' | '1080p'>('720p');
+    const [veo3BatchAspectRatio, setVeo3BatchAspectRatio] = useState('9:16');
 
     // 54 Background Presets (Transparent handled separately in UI)
     const backgroundPresets = [
@@ -1159,6 +1320,165 @@ const App = () => {
         { id: 'skyscraper', name: 'Tòa nhà cao', icon: '🏢', desc: 'Tower' },
         { id: 'farm', name: 'Nông trại', icon: '🌾', desc: 'Farm' },
         { id: 'greenhouse', name: 'Nhà kính', icon: '🏠', desc: 'Greenhouse' },
+    ];
+
+    const poseCategories = [
+        { id: 'standing', title: '🧍 Kiểu Tạo Dáng Đứng' },
+        { id: 'sitting', title: '🪑 Kiểu Tạo Dáng Ngồi' },
+        { id: 'dynamic', title: '⚡ Kiểu Tạo Dáng Năng Động' },
+        { id: 'accessory', title: '👜 Kiểu Tạo Dáng Sử Dụng Phụ Kiện' },
+        { id: 'lying', title: '🛌 Kiểu Tạo Dáng Nằm' },
+        { id: 'interaction', title: '🪟 Kiểu Tạo Dáng Tương Tác' }
+    ];
+
+    const posePresets = [
+        {
+            id: 'power-stance',
+            category: 'standing',
+            icon: '🧍',
+            name: 'The Power Stance',
+            desc: 'Đứng thẳng, hai chân rộng bằng vai, tay chống hông hoặc bỏ túi, tạo cảm giác tự tin và mạnh mẽ'
+        },
+        {
+            id: 's-curve',
+            category: 'standing',
+            icon: '💃',
+            name: 'The S-Curve',
+            desc: 'Đứng nghiêng, chuyển trọng tâm sang một chân, tạo đường cong chữ S tự nhiên với cơ thể'
+        },
+        {
+            id: 'lookaway',
+            category: 'standing',
+            icon: '👀',
+            name: 'The Lookaway',
+            desc: 'Đứng nghiêng 3/4, nhìn về hướng khác, tạo vẻ tự nhiên và không gượng ép'
+        },
+        {
+            id: 'walk',
+            category: 'standing',
+            icon: '🚶',
+            name: 'The Walk',
+            desc: 'Bước đi tự nhiên, có thể ngẩng cao đầu hoặc nhìn xuống, tóc và quần áo bay động'
+        },
+        {
+            id: 'lean',
+            category: 'standing',
+            icon: '🧱',
+            name: 'The Lean',
+            desc: 'Dựa vào tường, cột hoặc cây, một chân gập lại, tạo tư thế thư giãn'
+        },
+        {
+            id: 'cross-leg-sit',
+            category: 'sitting',
+            icon: '🧘',
+            name: 'The Cross-Leg Sit',
+            desc: 'Ngồi bệt, bắt chéo chân, lưng thẳng, tay đặt tự nhiên'
+        },
+        {
+            id: 'side-sit',
+            category: 'sitting',
+            icon: '🪑',
+            name: 'The Side Sit',
+            desc: 'Ngồi nghiêng, hai chân gập về một bên, tay chống đất'
+        },
+        {
+            id: 'chair-pose',
+            category: 'sitting',
+            icon: '💺',
+            name: 'The Chair Pose',
+            desc: 'Ngồi trên ghế nhưng không dựa lưng hoàn toàn, lưng thẳng, một chân gập lên'
+        },
+        {
+            id: 'squat',
+            category: 'sitting',
+            icon: '🧎',
+            name: 'The Squat',
+            desc: 'Ngồi xổm, có thể đặt tay lên đầu gối hoặc chống đất'
+        },
+        {
+            id: 'jump',
+            category: 'dynamic',
+            icon: '🤸',
+            name: 'The Jump',
+            desc: 'Nhảy cao, tóc và quần áo bay, tay mở rộng hoặc duỗi cao'
+        },
+        {
+            id: 'twirl',
+            category: 'dynamic',
+            icon: '💫',
+            name: 'The Twirl',
+            desc: 'Xoay tròn, váy hoặc áo xòe rộng, tóc bay'
+        },
+        {
+            id: 'run',
+            category: 'dynamic',
+            icon: '🏃',
+            name: 'The Run',
+            desc: 'Chạy nhẹ hoặc chạy nhanh, tạo cảm giác năng động'
+        },
+        {
+            id: 'hair-flip',
+            category: 'dynamic',
+            icon: '💇',
+            name: 'The Hair Flip',
+            desc: 'Quăng tóc, xoay đầu, tạo chuyển động đẹp mắt'
+        },
+        {
+            id: 'jacket-over-shoulder',
+            category: 'accessory',
+            icon: '🧥',
+            name: 'The Jacket Over Shoulder',
+            desc: 'Khoác áo lên vai, một tay cầm áo, tạo vẻ thanh lịch'
+        },
+        {
+            id: 'bag-swing',
+            category: 'accessory',
+            icon: '👜',
+            name: 'The Bag Swing',
+            desc: 'Cầm túi xách, đưa túi ra trước hoặc đung đưa nhẹ'
+        },
+        {
+            id: 'hat-touch',
+            category: 'accessory',
+            icon: '🎩',
+            name: 'The Hat Touch',
+            desc: 'Chạm nhẹ vào mũ, đội mũ hoặc cởi mũ'
+        },
+        {
+            id: 'sunglasses-peek',
+            category: 'accessory',
+            icon: '🕶️',
+            name: 'The Sunglasses Peek',
+            desc: 'Hạ kính xuống, nhìn qua kính hoặc cầm kính bằng răng'
+        },
+        {
+            id: 'side-lay',
+            category: 'lying',
+            icon: '🛏️',
+            name: 'The Side Lay',
+            desc: 'Nằm nghiêng, chống tay lên, chân duỗi thẳng hoặc gập nhẹ'
+        },
+        {
+            id: 'back-lay',
+            category: 'lying',
+            icon: '🛌',
+            name: 'The Back Lay',
+            desc: 'Nằm ngửa, tay dang rộng hoặc đặt sau đầu, chân duỗi thẳng'
+        },
+        {
+            id: 'window-mirror-reflection',
+            category: 'interaction',
+            icon: '🪞',
+            name: 'The Window/Mirror Reflection',
+            desc: 'Đứng bên cửa sổ, gương, tạo phản chiếu thú vị, có thể nhìn vào gương hoặc ra ngoài'
+        },
+        {
+            id: 'mirror-selfie-phone',
+            category: 'interaction',
+            icon: '📱',
+            name: 'Mirror Selfie',
+            desc: 'Cầm điện thoại đứng selfie trước gương'
+        }
     ];
 
     // Influencer attributes
@@ -1249,7 +1569,36 @@ const App = () => {
         return true;
     };
 
-    const handleTabChange = (tab: 'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer' | 'change-background') => {
+    // --- Hand-on Handlers ---
+    const addHandItem = (itemName: string, isPreset: boolean) => {
+        if (!itemName.trim()) return;
+
+        const newItem: HandItem = {
+            id: crypto.randomUUID(),
+            name: itemName.trim(),
+            type: isPreset ? 'preset' : 'custom'
+        };
+
+        setHandItems(prev => [...prev, newItem]);
+        setCustomHandItem('');
+    };
+
+    const addCustomHandItem = () => {
+        if (!customHandItem.trim()) return;
+        addHandItem(customHandItem, false);
+    };
+
+    const removeHandItem = (id: string) => {
+        setHandItems(prev => prev.filter(item => item.id !== id));
+    };
+
+    const clearAllHandItems = () => {
+        if (window.confirm('Bạn có chắc muốn xóa tất cả đồ vật trên tay không?')) {
+            setHandItems([]);
+        }
+    };
+
+    const handleTabChange = (tab: 'try-on' | 'skin-fix' | 'breast-aug' | 'swap-face' | 'ai-influencer' | 'change-background' | 'veo3') => {
         setActiveTab(tab);
         setError(null);
         setIsDownloadMenuOpen(false);
@@ -1308,6 +1657,35 @@ const App = () => {
             console.error('Error converting data URL to file:', err);
             return null;
         }
+    };
+
+    const imageUrlToFile = async (imageUrl: string, filename: string): Promise<File | null> => {
+        if (!imageUrl) return null;
+        if (imageUrl.startsWith('data:')) {
+            return await dataUrlToFile(imageUrl, filename);
+        }
+        try {
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch image: ${response.status}`);
+            }
+            const blob = await response.blob();
+            return new File([blob], filename, { type: blob.type || 'image/png' });
+        } catch (err) {
+            console.error('Failed to fetch image for Veo3:', err);
+            return null;
+        }
+    };
+
+    const handleLoadToVeo3Single = async (imageUrl: string | null) => {
+        if (!imageUrl) return;
+        const file = await imageUrlToFile(imageUrl, 'veo3-input.png');
+        if (!file) return;
+        const previewUrl = URL.createObjectURL(file);
+        setVeo3SingleInputFile(file);
+        setVeo3SingleInputPreview(previewUrl);
+        handleTabChange('veo3');
+        setVeo3SubTab('single');
     };
 
     // Effect to handle auto-fix when skin-fix tab is active and autoFixFromUrl is set
@@ -1826,6 +2204,18 @@ The model in the output must look exactly like the model in the last input image
 `;
                 }
 
+                // Add Hand-on Items instruction
+                if (handItems.length > 0) {
+                    const handItemsList = handItems.map(item => item.name).join(', ');
+                    segmentationInstructions += `
+- HAND ITEMS (NOT FROM IMAGES):
+  * Items to add: ${handItemsList}
+  * TARGET: Place naturally in model's hand(s) - hold the items naturally as if the model is holding them
+  * DO NOT create images of these items - just describe them in the output
+  * IMPORTANT: These items are DESCRIPTIONS ONLY - generate the model holding these items naturally
+`;
+                }
+
                 instructions += `MODE: EXPLICIT SEGMENTATION & TRANSFER
 
 CRITICAL - IMAGE ORDER:
@@ -2197,9 +2587,7 @@ to remove the artificial plastic look while maintaining all original qualities.
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
             const fallbackModels = apiSettings.provider === 'gemini'
-                ? (selectedModel === 'gemini-3-pro-image-preview'
-                    ? ['gemini-3-flash-preview']
-                    : ['gemini-3-pro-image-preview'])
+                ? getGeminiImageFallbackModels(selectedModel)
                 : [];
 
             // Find the selected clothing option
@@ -2277,6 +2665,106 @@ OUTPUT: A single, high-quality image of the ${clothingOption.name} on a transpar
         setSelectedAIClothing(null);
     };
 
+    const getChangeBackgroundContext = () => {
+        let bgName = 'bối cảnh mới';
+        let bgDescription = '';
+        let isTransparent = false;
+
+        if (customBgFile) {
+            bgName = 'nền tùy chỉnh được tải lên';
+            bgDescription = 'Sử dụng chính xác nền được cung cấp';
+        } else if (selectedBackground === 'random') {
+            bgName = 'bối cảnh ngẫu nhiên';
+            bgDescription = 'Tự động chọn bối cảnh đẹp và phù hợp với trang phục';
+        } else if (selectedBackground === 'transparent') {
+            isTransparent = true;
+            bgName = 'NỀN TRONG SUỐT (transparent background)';
+        } else {
+            const preset = backgroundPresets.find(b => b.id === selectedBackground);
+            if (preset) {
+                bgName = preset.name;
+                bgDescription = preset.desc;
+            }
+        }
+
+        return { bgName, bgDescription, isTransparent };
+    };
+
+    const buildChangeBackgroundPrompt = () => {
+        const { bgName, bgDescription, isTransparent } = getChangeBackgroundContext();
+        const selectedPosePreset = selectedPose ? posePresets.find(p => p.id === selectedPose) : null;
+        const poseInstruction = selectedPosePreset
+            ? `QUAN TRỌNG - TẠO DÁNG CỤ THỂ: ${selectedPosePreset.name} - ${selectedPosePreset.desc}. Giữ nguyên TRANG PHỤC hiện tại, không thay đổi chất liệu, màu sắc hay kiểu dáng.`
+            : generationSettings.changePose
+                ? 'QUAN TRỌNG - THAY ĐỔI TƯ THẾ: Đặt nhân vật vào pose/thái độ phù hợp với bối cảnh mới. Nếu là bãi biển thì đứng thoải mái, nếu là phòng gym thì tạo dáng tập, nếu là văn phòng thì đứng/chỗ ngồi chuyên nghiệp. Tạo pose tự nhiên, phù hợp với không gian.'
+                : '- Giữ nguyên tư thế và pose của nhân vật gốc';
+
+        const expressionInstruction = generationSettings.changeExpression
+            ? 'QUAN TRỌNG - THAY ĐỔI BIỂU CẢM: Tạo biểu cảm khuôn mặt phù hợp với không khí của bối cảnh. Nếu là bãi biển thì vui vẻ, thư giãn; nếu là văn phòng thì nghiêm túc, chuyên nghiệp; nếu là quán cà phê thì nhẹ nhàng, thoải mái. Biểu cảm tự nhiên, mắt mở rõ, miệng cười nhẹ hoặc neutral.'
+            : '- Giữ nguyên biểu cảm khuôn mặt tự nhiên';
+
+        const fullBodyInstruction = generationSettings.generateFullBody
+            ? 'QUAN TRỌNG: Hiển thị ĐẦY ĐỦ TOÀN THÂN nhân vật từ đầu đến chân, không cắt cụt. Nếu ảnh gốc chỉ có nửa thân, HÃY TÁI TẠO phần còn thiếu để có ảnh toàn thân hoàn chỉnh.'
+            : '- Giữ nguyên phần thân hiển thị trong ảnh gốc';
+
+        return `Bạn là chuyên gia AI về chỉnh sửa ảnh và thay đổi background chuyên nghiệp.
+
+NHIỆM VỤ: ${isTransparent ? 'Tạo ảnh với NỀN TRONG SUỐT (transparent background), chỉ giữ lại nhân vật' : `Đặt nhân vật trong ảnh vào ${bgName} mới`}
+
+${fullBodyInstruction}
+
+${poseInstruction}
+
+${expressionInstruction}
+
+QUY TRÌNH XỬ LÝ:
+1. PHÂN TÍCH:
+   - Nhận diện chính xác nhân vật trong ảnh (bao gồm tóc, trang phục, phụ kiện)
+   - Tách nhân vật ra khỏi nền gốc một cách sạch sẽ
+   - Đánh giá đặc điểm trang phục và phong cách nhân vật
+
+2. ÁP DỤNG VÀO BỐI CẢNH MỚI:
+   ${isTransparent 
+      ? '- Tạo nền TRONG SUỐT, loại bỏ hoàn toàn background, chỉ giữ lại nhân vật với viền sạch' 
+      : customBgFile 
+          ? `- Sử dụng chính xác ảnh nền được cung cấp, đặt nhân vật vào đúng vị trí phù hợp`
+          : selectedBackground === 'random' 
+              ? `- Tự động chọn và tạo bối cảnh đẹp, chuyên nghiệp, phù hợp với nhân vật`
+              : `- Tạo ${bgName}: ${bgDescription}`}
+   - Đảm bảo nhân vật hòa hợp tự nhiên với không gian mới
+   - Điều chỉnh kích thước và tỷ lệ nhân vật phù hợp với bối cảnh
+   - Nếu cần tạo toàn thân, tái tạo phần chân còn thiếu một cách tự nhiên
+
+3. TỐI ƯU CHẤT LƯỢNG:
+   - Ánh sáng và bóng đổ tự nhiên, phù hợp với không gian mới
+   - Độ phân giải cao, chi tiết sắc nét
+   - Màu sắc hài hòa giữa nhân vật và bối cảnh
+
+QUY TẮC QUAN TRỌNG:
+- Giữ nguyên DANH TÍNH, HÌNH DÁNG CƠ THỂ và TRANG PHỤC của nhân vật gốc
+- Chỉ thay đổi bối cảnh nền, KHÔNG thay đổi cơ thể, trang phục, khuôn mặt
+- Kết quả phải tự nhiên, không có dấu hiệu ghép nối
+- Da có kết cấu tự nhiên, không bị "da nhựa" hay quá mịn
+- Nếu có nền trong suốt, đảm bảo viền nhân vật sạch sẽ, không có bóng hay vết cắt
+
+ĐÂY LÀ ẢNH NHÂN VẬT CẦN ĐẶT VÀO BỐI CẢNH MỚI:`;
+    };
+
+    useEffect(() => {
+        if (!customBgFile && !selectedBackground) {
+            setChangeBackgroundPrompt('');
+            return;
+        }
+        setChangeBackgroundPrompt(buildChangeBackgroundPrompt());
+    }, [
+        customBgFile,
+        selectedBackground,
+        selectedPose,
+        generationSettings.changePose,
+        generationSettings.changeExpression,
+        generationSettings.generateFullBody
+    ]);
+
     // Face Swap Function
     const handleFaceSwap = async () => {
         if (!modelFile || !faceSourceFile) {
@@ -2293,9 +2781,7 @@ OUTPUT: A single, high-quality image of the ${clothingOption.name} on a transpar
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
             const fallbackModels = apiSettings.provider === 'gemini'
-                ? (selectedModel === 'gemini-3-pro-image-preview'
-                    ? ['gemini-3-flash-preview']
-                    : ['gemini-3-pro-image-preview'])
+                ? getGeminiImageFallbackModels(selectedModel)
                 : [];
 
             // Determine source and target based on hot-swap
@@ -2396,9 +2882,13 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                 throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
             }
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
+            let errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
+            if (typeof errorMessage === 'string' && (errorMessage.includes('not supported for generateContent') || errorMessage.includes('models/veo-') || errorMessage.includes('NOT_FOUND'))) {
+                errorMessage = 'Model hiện tại không hỗ trợ đổi bối cảnh. Vui lòng chọn model ảnh (gemini-3-pro-image hoặc gemini-2-5-flash-image) trong Cài đặt.';
+                setIsSettingsOpen(true);
+            }
             const overloadMessage = isOverloadedError(err)
-                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-3-flash-preview).'
+                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-2-5-flash-image).'
                 : null;
             console.error('Face swap error:', err);
             setError(`Face swap thất bại: ${errorMessage}`);
@@ -2421,18 +2911,22 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
             return;
         }
 
+        const selectedModel = apiSettings.models[apiSettings.provider];
+        if (apiSettings.provider === 'veo' || selectedModel.startsWith('veo-')) {
+            setError('Đổi bối cảnh không hỗ trợ model Veo. Vui lòng vào Cài đặt và chọn model ảnh (ví dụ: gemini-3-pro-image hoặc gemini-2-5-flash-image).');
+            setIsSettingsOpen(true);
+            return;
+        }
+
         setIsChangingBg(true);
         setError(null);
 
         try {
             const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
             const fallbackModels = apiSettings.provider === 'gemini'
-                ? (selectedModel === 'gemini-3-pro-image-preview'
-                    ? ['gemini-3-flash-preview']
-                    : ['gemini-3-pro-image-preview'])
+                ? getGeminiImageFallbackModels(selectedModel)
                 : [];
 
             console.log('Change Background - Source:', bgSourceFile?.name);
@@ -2440,82 +2934,7 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
             // Prepare image parts
             const sourcePart = await fileToGenerativePart(bgSourceFile, 'bg-change-source');
 
-            // Get background name for the prompt
-            let bgName = 'bối cảnh mới';
-            let bgDescription = '';
-            let isTransparent = false;
-            
-            if (customBgFile) {
-                bgName = 'nền tùy chỉnh được tải lên';
-                bgDescription = 'Sử dụng chính xác nền được cung cấp';
-            } else if (selectedBackground === 'random') {
-                bgName = 'bối cảnh ngẫu nhiên';
-                bgDescription = 'Tự động chọn bối cảnh đẹp và phù hợp với trang phục';
-            } else if (selectedBackground === 'transparent') {
-                isTransparent = true;
-                bgName = 'NỀN TRONG SUỐNG (transparent background)';
-            } else {
-                const preset = backgroundPresets.find(b => b.id === selectedBackground);
-                if (preset) {
-                    bgName = preset.name;
-                    bgDescription = preset.desc;
-                }
-            }
-
-            // Build generation instruction
-            const poseInstruction = generationSettings.changePose
-                ? 'QUAN TRỌNG - THAY ĐỔI TƯ THẾ: Đặt nhân vật vào pose/thái độ phù hợp với bối cảnh mới. Nếu là bãi biển thì đứng thoải mái, nếu là phòng gym thì tạo dáng tập, nếu là văn phòng thì đứng/chỗ ngồi chuyên nghiệp. Tạo pose tự nhiên, phù hợp với không gian.'
-                : '- Giữ nguyên tư thế và pose của nhân vật gốc';
-
-            const expressionInstruction = generationSettings.changeExpression
-                ? 'QUAN TRỌNG - THAY ĐỔI BIỂU CẢM: Tạo biểu cảm khuôn mặt phù hợp với không khí của bối cảnh. Nếu là bãi biển thì vui vẻ, thư giãn; nếu là văn phòng thì nghiêm túc, chuyên nghiệp; nếu là quán cà phê thì nhẹ nhàng, thoải mái. Biểu cảm tự nhiên, mắt mở rõ, miệng cười nhẹ hoặc neutral.'
-                : '- Giữ nguyên biểu cảm khuôn mặt tự nhiên';
-
-            const fullBodyInstruction = generationSettings.generateFullBody
-                ? 'QUAN TRỌNG: Hiển thị ĐẦY ĐỦ TOÀN THÂN nhân vật từ đầu đến chân, không cắt cụt. Nếu ảnh gốc chỉ có nửa thân, HÃY TÁI TẠO phần còn thiếu để có ảnh toàn thân hoàn chỉnh.'
-                : '- Giữ nguyên phần thân hiển thị trong ảnh gốc';
-
-            const prompt = `Bạn là chuyên gia AI về chỉnh sửa ảnh và thay đổi background chuyên nghiệp.
-
-NHIỆM VỤ: ${isTransparent ? 'Tạo ảnh với NỀN TRONG SUỐT (transparent background), chỉ giữ lại nhân vật' : `Đặt nhân vật trong ảnh vào ${bgName} mới`}
-
-${fullBodyInstruction}
-
-${poseInstruction}
-
-${expressionInstruction}
-
-QUY TRÌNH XỬ LÝ:
-1. PHÂN TÍCH:
-   - Nhận diện chính xác nhân vật trong ảnh (bao gồm tóc, trang phục, phụ kiện)
-   - Tách nhân vật ra khỏi nền gốc một cách sạch sẽ
-   - Đánh giá đặc điểm trang phục và phong cách nhân vật
-
-2. ÁP DỤNG VÀO BỐI CẢNH MỚI:
-   ${isTransparent 
-      ? '- Tạo nền TRONG SUỐT, loại bỏ hoàn toàn background, chỉ giữ lại nhân vật với viền sạch' 
-      : customBgFile 
-          ? `- Sử dụng chính xác ảnh nền được cung cấp, đặt nhân vật vào đúng vị trí phù hợp`
-          : selectedBackground === 'random' 
-              ? `- Tự động chọn và tạo bối cảnh đẹp, chuyên nghiệp, phù hợp với nhân vật`
-              : `- Tạo ${bgName}: ${bgDescription}`}
-   - Đảm bảo nhân vật hòa hợp tự nhiên với không gian mới
-   - Điều chỉnh kích thước và tỷ lệ nhân vật phù hợp với bối cảnh
-   - Nếu cần tạo toàn thân, tái tạo phần chân còn thiếu một cách tự nhiên
-
-3. TỐI ƯU CHẤT LƯỢNG:
-   - Ánh sáng và bóng đổ tự nhiên, phù hợp với không gian mới
-   - Độ phân giải cao, chi tiết sắc nét
-   - Màu sắc hài hòa giữa nhân vật và bối cảnh
-
-QUY TẮC QUAN TRỌNG:
-- Giữ nguyên DANH TÍNH, HÌNH DÁNG CƠ THỂ và TRANG PHỤC của nhân vật gốc
-- Chỉ thay đổi bối cảnh nền, KHÔNG thay đổi cơ thể, trang phục, khuôn mặt
-- Kết quả phải tự nhiên, không có dấu hiệu ghép nối
-- Da có kết cấu tự nhiên, không bị "da nhựa" hay quá mịn
-- Nếu có nền trong suốt, đảm bảo viền nhân vật sạch sẽ, không có bóng hay vết cắt
-
-ĐÂY LÀ ẢNH NHÂN VẬT CẦN ĐẶT VÀO BỐI CẢNH MỚI:`;
+            const prompt = changeBackgroundPrompt.trim() || buildChangeBackgroundPrompt();
 
             let contents: any = {
                 parts: [
@@ -2554,7 +2973,7 @@ QUY TẮC QUAN TRỌNG:
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
             const overloadMessage = isOverloadedError(err)
-                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-3-flash-preview).'
+                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-2-5-flash-image).'
                 : null;
             console.error('Change background error:', err);
             setError(`Thay đổi bối cảnh thất bại: ${errorMessage}`);
@@ -2563,6 +2982,529 @@ QUY TẮC QUAN TRỌNG:
             }
         } finally {
             setIsChangingBg(false);
+        }
+    };
+
+    // ========== VEO3 VIDEO FUNCTIONS ==========
+
+    // Helper: Resize image to max dimension
+    const resizeVeo3Image = async (file: File, maxDimension: number = 1920): Promise<Blob> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let { width, height } = img;
+                    if (width > height) {
+                        if (width > maxDimension) {
+                            height = Math.round((height * maxDimension) / width);
+                            width = maxDimension;
+                        }
+                    } else {
+                        if (height > maxDimension) {
+                            width = Math.round((width * maxDimension) / height);
+                            height = maxDimension;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0, width, height);
+                    canvas.toBlob((blob) => {
+                        if (blob) resolve(blob);
+                        else reject(new Error('Failed to create blob'));
+                    }, 'image/jpeg', 0.9);
+                };
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = event.target?.result as string;
+            };
+            reader.onerror = () => reject(new Error('Failed to read file'));
+        });
+    };
+
+    // Helper: Blob to base64
+    const blobToVeo3Base64 = (blob: Blob): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onload = () => resolve(reader.result?.split(',')[1] || '');
+            reader.onerror = reject;
+        });
+    };
+
+    const getVeo3VideoDownloadLink = (operation: any): string | null => {
+        const candidates = [
+            operation?.response?.generatedVideos?.[0]?.video?.uri,
+            operation?.response?.generatedVideos?.[0]?.video?.url,
+            operation?.response?.generatedVideos?.[0]?.video?.downloadUri,
+            operation?.response?.generatedVideos?.[0]?.video?.downloadUrl,
+            operation?.response?.generatedVideos?.[0]?.uri,
+            operation?.response?.generatedVideos?.[0]?.fileUri,
+            operation?.result?.generatedVideos?.[0]?.video?.uri,
+            operation?.result?.generatedVideos?.[0]?.video?.url,
+            operation?.result?.generatedVideos?.[0]?.video?.downloadUri,
+            operation?.result?.generatedVideos?.[0]?.uri
+        ];
+
+        const link = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+        return link || null;
+    };
+
+    // Get active Veo3 API key
+    const getVeo3ActiveKey = (): string | null => {
+        const veoKeys = apiSettings.keys.veo;
+        const activeKey = veoKeys.find(k => k.isActive);
+        return activeKey ? activeKey.key : null;
+    };
+
+    // Single Video Generation
+    const handleVeo3SingleVideo = async () => {
+        if (!veo3SinglePrompt.trim()) { alert('Vui lòng nhập mô tả video!'); return; }
+        const activeKey = getVeo3ActiveKey();
+        if (!activeKey) { setError('Vui lòng thêm API Key cho Veo3 trong phần Cài đặt!'); setIsSettingsOpen(true); return; }
+
+        setVeo3IsGeneratingSingle(true);
+        setVeo3SingleResultUrl(null);
+        setError(null);
+        setVeo3SingleProgress('Đang khởi tạo...');
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: activeKey });
+            let imagePart = undefined;
+            
+            if (veo3SingleInputFile) {
+                setVeo3SingleProgress('Đang xử lý ảnh...');
+                const resizedBlob = await resizeVeo3Image(veo3SingleInputFile);
+                const b64 = await blobToVeo3Base64(resizedBlob);
+                imagePart = { imageBytes: b64, mimeType: 'image/jpeg' };
+            }
+
+            setVeo3SingleProgress('Đang tạo video...');
+            const operation = await ai.models.generateVideos({
+                model: veo3SingleModel,
+                prompt: veo3SinglePrompt,
+                image: imagePart,
+                config: { numberOfVideos: 1, resolution: veo3SingleResolution, aspectRatio: veo3SingleAspectRatio }
+            });
+
+            let currentOperation = operation;
+            let attempts = 0;
+            let downloadLink = getVeo3VideoDownloadLink(currentOperation);
+            while ((!currentOperation.done || !downloadLink) && attempts < 60) {
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                currentOperation = await ai.operations.getVideosOperation({ operation: currentOperation });
+                if (currentOperation.error) throw new Error(currentOperation.error.message);
+                downloadLink = getVeo3VideoDownloadLink(currentOperation);
+                attempts++;
+            }
+
+            if (currentOperation.error) throw new Error(currentOperation.error.message);
+            if (!downloadLink) throw new Error('Không tìm thấy link video.');
+
+            setVeo3SingleProgress('Đang tải video...');
+            const response = await fetch(`${downloadLink}&key=${activeKey}`);
+            if (!response.ok) throw new Error(`Lỗi tải video: ${response.status} ${response.statusText}`);
+            const blob = await response.blob();
+            setVeo3SingleResultUrl(URL.createObjectURL(blob));
+        } catch (err: any) {
+            let errorMsg = err.message || 'Lỗi không xác định';
+            let errorType = 'error';
+            
+            // Parse và phân loại lỗi
+            if (errorMsg.includes('400') || errorMsg.includes('INVALID_ARGUMENT') || errorMsg.includes('Unable to process input image')) {
+                errorType = 'image-error';
+                errorMsg = `❌ Lỗi ảnh đầu vào (400)\n\nNguyên nhân có thể:\n• Ảnh có kích thước quá lớn (> 4MB)\n• Ảnh có watermark hoặc logo\n• Ảnh vi phạm chính sách nội dung\n• API Key chưa kích hoạt billing\n\n💡 Giải pháp:\n• Thử ảnh khác (không có mặt người thật)\n• Sử dụng ảnh illustration/mannequin\n• Kiểm tra API Key có Billing enabled`;
+            } else if (errorMsg.includes('401') || errorMsg.includes('UNAUTHENTICATED')) {
+                errorType = 'auth-error';
+                errorMsg = `❌ Lỗi xác thực (401)\n\nAPI Key không hợp lệ hoặc đã hết hạn.\n\n💡 Giải pháp:\n• Vào Cài đặt > Xóa API Key cũ\n• Thêm API Key mới từ Google AI Studio\n• Đảm bảo API Key có Billing enabled`;
+            } else if (errorMsg.includes('403') || errorMsg.includes('PERMISSION_DENIED')) {
+                errorType = 'permission-error';
+                errorMsg = `❌ Lỗi quyền truy cập (403)\n\nModel chưa được cấp quyền hoặc API Key không hợp lệ.\n\n💡 Giải pháp:\n• Vào Google Cloud Console > Enable Video Generation API\n• Kiểm tra API Key có Billing enabled\n• Thử model 'veo-3.1-fast-generate-preview' thay vì 'pro'`;
+            } else if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('rate limit')) {
+                errorType = 'rate-error';
+                errorMsg = `❌ Lỗi vượt giới hạn (429)\n\nBạn đã sử dụng hết quota hoặc vượt rate limit.\n\n💡 Giải pháp:\n• Đợi vài phút rồi thử lại\n• Thử API Key khác (nếu có nhiều key)\n• Giảm số lượng video tạo một lúc`;
+            } else if (errorMsg.includes('500') || errorMsg.includes('503') || errorMsg.includes('SERVER_ERROR')) {
+                errorType = 'server-error';
+                errorMsg = `❌ Lỗi server (${errorMsg.includes('503') ? '503' : '500'})\n\nServer Google AI đang bận hoặc có sự cố.\n\n💡 Giải pháp:\n• Đợi vài phút rồi thử lại\n• Thử model 'veo-3.1-fast-generate-preview' thay vì 'pro'\n• Quay lại sau`;
+            } else if (errorMsg.includes('timeout') || errorMsg.includes('Timeout')) {
+                errorType = 'timeout-error';
+                errorMsg = `❌ Lỗi timeout\n\nVideo generation mất quá lâu.\n\n💡 Giải pháp:\n• Thử model 'veo-3.1-fast-generate-preview' (nhanh hơn)\n• Thử ảnh đầu vào khác đơn giản hơn\n• Giảm độ phân giải (720p thay vì 1080p)`;
+            } else if (errorMsg.includes('CONTENT_POLICY') || errorMsg.includes('raiMediaFilteredReasons')) {
+                errorType = 'content-error';
+                errorMsg = `❌ Nội dung bị từ chối\n\nẢnh hoặc prompt vi phạm chính sách an toàn của Google.\n\n💡 Giải pháp:\n• Sử dụng ảnh không có mặt người thật\n• Sử dụng ảnh illustration/mannequin\n• Tránh nội dung nhạy cảm\n• Thay đổi prompt mô tả`;
+            } else if (errorMsg.includes('Billing') || errorMsg.includes('billing')) {
+                errorType = 'billing-error';
+                errorMsg = `❌ Lỗi Billing\n\nAPI Key chưa được kích hoạt thanh toán.\n\n💡 Giải pháp:\n• Vào Google Cloud Console\n• Bật Billing cho project\n• Liên kết thẻ tín dụng/ATM`;
+            } else if (errorMsg.includes('No API key') || errorMsg.includes('API Key') || errorMsg.includes('apiKey')) {
+                errorType = 'no-key-error';
+                errorMsg = `❌ Thiếu API Key\n\nBạn chưa thêm API Key cho Veo3.\n\n💡 Giải pháp:\n• Vào nút ⚙️ Cài đặt ở header\n• Thêm Gemini API Key có Billing enabled`;
+            } else if (errorMsg.includes('download') || errorMsg.includes('tải')) {
+                errorType = 'download-error';
+                errorMsg = `❌ Lỗi tải video\n\nKhông thể tải video về máy.\n\n💡 Giải pháp:\n• Thử lại sau\n• Kiểm tra kết nối internet`;
+            } else if (errorMsg.includes('video') && errorMsg.includes('không')) {
+                errorType = 'no-video-error';
+                errorMsg = `❌ Không nhận được video\n\nServer không trả về video.\n\n💡 Giải pháp:\n• Thử lại với cài đặt khác\n• Sử dụng ảnh đầu vào khác`;
+            }
+            
+            setError(errorMsg);
+        } finally {
+            setVeo3IsGeneratingSingle(false);
+            setVeo3SingleProgress('');
+        }
+    };
+
+    // Extract frames from video
+    const extractVeo3Frames = (videoUrl: string): Promise<string[]> => {
+        return new Promise((resolve, reject) => {
+            const video = document.createElement('video');
+            video.crossOrigin = 'anonymous';
+            video.src = videoUrl;
+            video.onloadedmetadata = () => { video.currentTime = 0; };
+            video.onseeked = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+                resolve([canvas.toDataURL('image/jpeg', 0.7)]);
+            };
+            video.onerror = () => reject(new Error('Failed to load video'));
+        });
+    };
+
+    // Analyze video motion
+    const analyzeVeo3VideoMotion = async () => {
+        if (!veo3CloneSourceVideoPreview) { alert('Vui lòng tải video nguồn!'); return; }
+        const activeKey = getVeo3ActiveKey();
+        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+
+        setVeo3IsAnalyzingVideo(true);
+        setVeo3AnalyzedMotionPrompt('');
+        setError(null);
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: activeKey });
+            setVeo3CloneProgress('Đang trích xuất frames...');
+            const frames = await extractVeo3Frames(veo3CloneSourceVideoPreview);
+
+            setVeo3CloneProgress('Đang phân tích với AI...');
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.0-flash-exp',
+                contents: {
+                    parts: [
+                        { text: 'Mô tả chi tiết chuyển động của nhân vật trong video này bao gồm: tư thế, chuyển động tay, đầu, thân, chân và biểu cảm. Trả lời bằng tiếng Việt.' },
+                        { inlineData: { mimeType: 'image/jpeg', data: frames[0].split(',')[1] } }
+                    ]
+                }
+            });
+
+            const description = response.text || '';
+            if (description.trim()) {
+                setVeo3AnalyzedMotionPrompt(description);
+                setVeo3CloneMotionPrompt(description);
+            }
+        } catch (err: any) {
+            let errorMsg = err.message || 'Lỗi không xác định';
+            let errorType = 'error';
+            
+            if (errorMsg.includes('400') || errorMsg.includes('INVALID_ARGUMENT')) {
+                errorType = 'image-error';
+                errorMsg = `❌ Lỗi ảnh/video đầu vào (400)\n\nNguyên nhân có thể:\n• Video không thể đọc được\n• Video quá nặng hoặc định dạng không hỗ trợ\n\n💡 Giải pháp:\n• Thử video khác (định dạng MP4)\n• Dùng video ngắn hơn (< 10 giây)\n• Giảm chất lượng video nếu quá nặng`;
+            } else if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
+                errorType = 'rate-error';
+                errorMsg = `❌ Lỗi vượt giới hạn (429)\n\nBạn đã sử dụng hết quota.\n\n💡 Giải pháp:\n• Đợi vài phút rồi thử lại\n• Thử API Key khác`;
+            } else if (errorMsg.includes('401') || errorMsg.includes('403')) {
+                errorType = 'auth-error';
+                errorMsg = `❌ Lỗi xác thực (${errorMsg.includes('401') ? '401' : '403'})\n\nAPI Key không hợp lệ hoặc chưa có quyền.\n\n💡 Giải pháp:\n• Vào Cài đặt > Cập nhật API Key\n• Đảm bảo API Key có Billing enabled`;
+            } else if (errorMsg.includes('500') || errorMsg.includes('503')) {
+                errorType = 'server-error';
+                errorMsg = `❌ Lỗi server (${errorMsg.includes('503') ? '503' : '500'})\n\nServer Google AI đang bận.\n\n💡 Giải pháp:\n• Đợi vài phút rồi thử lại\n• Thử lại sau`;
+            } else if (errorMsg.includes('content') || errorMsg.includes('CONTENT_POLICY')) {
+                errorType = 'content-error';
+                errorMsg = `❌ Nội dung bị từ chối\n\nVideo hoặc ảnh vi phạm chính sách.\n\n💡 Giải pháp:\n• Thử video/ảnh khác\n• Tránh nội dung nhạy cảm`;
+            }
+            
+            setError(`Phân tích thất bại: ${errorMsg}`);
+        } finally {
+            setVeo3IsAnalyzingVideo(false);
+            setVeo3CloneProgress('');
+        }
+    };
+
+    // Clone Motion Generation
+    const handleVeo3CloneMotion = async () => {
+        if (!veo3CloneTargetImage) { alert('Vui lòng tải ảnh nhân vật!'); return; }
+        if (!veo3CloneMotionPrompt.trim()) { alert('Vui lòng mô tả chuyển động!'); return; }
+        const activeKey = getVeo3ActiveKey();
+        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+
+        setVeo3IsGeneratingClone(true);
+        setVeo3CloneResultUrl(null);
+        setError(null);
+        setVeo3CloneProgress('Đang xử lý...');
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: activeKey });
+            setVeo3CloneProgress('Đang xử lý ảnh...');
+            const resizedBlob = await resizeVeo3Image(veo3CloneTargetImage);
+            const b64 = await blobToVeo3Base64(resizedBlob);
+            const imagePart = { imageBytes: b64, mimeType: 'image/jpeg' };
+
+            setVeo3CloneProgress('Đang tạo video...');
+            const operation = await ai.models.generateVideos({
+                model: veo3CloneModel,
+                prompt: veo3CloneMotionPrompt,
+                image: imagePart,
+                config: { numberOfVideos: 1, resolution: veo3CloneResolution, aspectRatio: veo3CloneAspectRatio }
+            });
+
+            let currentOperation = operation;
+            let attempts = 0;
+            let downloadLink = getVeo3VideoDownloadLink(currentOperation);
+            while ((!currentOperation.done || !downloadLink) && attempts < 60) {
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                currentOperation = await ai.operations.getVideosOperation({ operation: currentOperation });
+                if (currentOperation.error) throw new Error(currentOperation.error.message);
+                downloadLink = getVeo3VideoDownloadLink(currentOperation);
+                attempts++;
+            }
+
+            if (currentOperation.error) throw new Error(currentOperation.error.message);
+            if (!downloadLink) throw new Error('Không tìm thấy link video.');
+
+            setVeo3CloneProgress('Đang tải video...');
+            const response = await fetch(`${downloadLink}&key=${activeKey}`);
+            if (!response.ok) throw new Error(`Lỗi tải video: ${response.status}`);
+            const blob = await response.blob();
+            setVeo3CloneResultUrl(URL.createObjectURL(blob));
+        } catch (err: any) {
+            let errorMsg = err.message || 'Lỗi không xác định';
+            let errorType = 'error';
+            
+            // Parse và phân loại lỗi cho Clone Motion
+            if (errorMsg.includes('400') || errorMsg.includes('INVALID_ARGUMENT') || errorMsg.includes('Unable to process input image')) {
+                errorType = 'image-error';
+                errorMsg = `❌ Lỗi ảnh đầu vào (400)\n\nNguyên nhân có thể:\n• Ảnh nhân vật có kích thước quá lớn\n• Ảnh có watermark/logo\n• Ảnh vi phạm chính sách nội dung\n\n💡 Giải pháp:\n• Sử dụng ảnh không có mặt người thật\n• Dùng ảnh illustration/mannequin\n• Thử ảnh khác đơn giản hơn`;
+            } else if (errorMsg.includes('401') || errorMsg.includes('UNAUTHENTICATED')) {
+                errorType = 'auth-error';
+                errorMsg = `❌ Lỗi xác thực (401)\n\nAPI Key không hợp lệ hoặc đã hết hạn.\n\n💡 Giải pháp:\n• Vào Cài đặt > Cập nhật API Key mới`;
+            } else if (errorMsg.includes('403') || errorMsg.includes('PERMISSION_DENIED')) {
+                errorType = 'permission-error';
+                errorMsg = `❌ Lỗi quyền truy cập (403)\n\nModel chưa được cấp quyền.\n\n💡 Giải pháp:\n• Vào Google Cloud Console > Enable Video API\n• Kiểm tra Billing`;
+            } else if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('rate limit')) {
+                errorType = 'rate-error';
+                errorMsg = `❌ Lỗi vượt giới hạn (429)\n\nBạn đã sử dụng hết quota.\n\n💡 Giải pháp:\n• Đợi vài phút rồi thử lại\n• Thử API Key khác`;
+            } else if (errorMsg.includes('500') || errorMsg.includes('503')) {
+                errorType = 'server-error';
+                errorMsg = `❌ Lỗi server (${errorMsg.includes('503') ? '503' : '500'})\n\nServer Google AI đang bận.\n\n💡 Giải pháp:\n• Đợi vài phút rồi thử lại`;
+            } else if (errorMsg.includes('timeout') || errorMsg.includes('Timeout')) {
+                errorType = 'timeout-error';
+                errorMsg = `❌ Lỗi timeout\n\nVideo generation mất quá lâu.\n\n💡 Giải pháp:\n• Thử model 'fast' thay vì 'pro'\n• Giảm độ phân giải xuống 720p`;
+            } else if (errorMsg.includes('CONTENT_POLICY') || errorMsg.includes('raiMediaFilteredReasons')) {
+                errorType = 'content-error';
+                errorMsg = `❌ Nội dung bị từ chối\n\nẢnh hoặc prompt vi phạm chính sách an toàn.\n\n💡 Giải pháp:\n• Sử dụng ảnh không có mặt người thật\n• Tránh nội dung nhạy cảm`;
+            } else if (errorMsg.includes('Billing') || errorMsg.includes('billing')) {
+                errorType = 'billing-error';
+                errorMsg = `❌ Lỗi Billing\n\nAPI Key chưa được kích hoạt thanh toán.\n\n💡 Giải pháp:\n• Vào Google Cloud Console > Bật Billing`;
+            } else if (errorMsg.includes('No API key') || errorMsg.includes('API Key')) {
+                errorType = 'no-key-error';
+                errorMsg = `❌ Thiếu API Key\n\nVui lòng thêm API Key trong phần Cài đặt.`;
+            } else if (errorMsg.includes('download') || errorMsg.includes('tải')) {
+                errorType = 'download-error';
+                errorMsg = `❌ Lỗi tải video\n\nKhông thể tải video về máy.\n\n💡 Giải pháp:\n• Thử lại sau\n• Kiểm tra kết nối internet`;
+            }
+            
+            setError(errorMsg);
+        } finally {
+            setVeo3IsGeneratingClone(false);
+            setVeo3CloneProgress('');
+        }
+    };
+
+    // Generate single batch video
+    const generateVeo3BatchVideo = async (item: any, apiKey: string): Promise<string | null> => {
+        const ai = new GoogleGenAI({ apiKey });
+        const resizedBlob = await resizeVeo3Image(item.file);
+        const b64 = await blobToVeo3Base64(resizedBlob);
+        const imagePart = { imageBytes: b64, mimeType: 'image/jpeg' };
+
+        const operation = await ai.models.generateVideos({
+            model: veo3BatchModel,
+            prompt: item.prompt,
+            image: imagePart,
+            config: { numberOfVideos: 1, resolution: veo3BatchResolution, aspectRatio: veo3BatchAspectRatio }
+        });
+
+        let currentOperation = operation;
+        let attempts = 0;
+        let downloadLink = getVeo3VideoDownloadLink(currentOperation);
+        while ((!currentOperation.done || !downloadLink) && attempts < 60) {
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            currentOperation = await ai.operations.getVideosOperation({ operation: currentOperation });
+            if (currentOperation.error) throw new Error(currentOperation.error.message);
+            downloadLink = getVeo3VideoDownloadLink(currentOperation);
+            attempts++;
+        }
+
+        if (currentOperation.error) throw new Error(currentOperation.error.message);
+        if (!downloadLink) throw new Error('Không tìm thấy link video.');
+
+        const response = await fetch(`${downloadLink}&key=${apiKey}`);
+        if (!response.ok) throw new Error('Failed to download video');
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+    };
+
+    // Batch Video Processing
+    const handleVeo3BatchVideos = async () => {
+        const prompts = veo3BatchPrompt.split('\n').filter(p => p.trim());
+        const items = veo3BatchInputFiles.map((file, idx) => ({
+            id: `veo3-${Date.now()}-${idx}`,
+            file,
+            preview: veo3BatchInputPreviews[idx],
+            prompt: (prompts[idx] || prompts[0] || '').trim(),
+            status: 'pending',
+            retryCount: 0
+        }));
+
+        if (items.length === 0) { alert('Vui lòng tải ít nhất 1 ảnh!'); return; }
+        
+        const activeKey = getVeo3ActiveKey();
+        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+
+        setVeo3BatchVideoItems(items);
+        setVeo3BatchCurrentIndex(0);
+        setVeo3BatchTotal(items.length);
+        setVeo3IsProcessingBatch(true);
+        setError(null);
+
+        try {
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === i ? { ...it, status: 'processing' } : it));
+                setVeo3BatchCurrentIndex(i + 1);
+
+                try {
+                    const resultUrl = await generateVeo3BatchVideo(item, activeKey);
+                    setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === i ? { ...it, status: 'completed', resultUrl } : it));
+                } catch (err: any) {
+                    const errorMsg = formatVeo3BatchError(err);
+                    setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === i ? { ...it, status: 'error', error: errorMsg } : it));
+                }
+
+                if (i < items.length - 1) await new Promise(resolve => setTimeout(resolve, 8000));
+            }
+        } catch (err: any) {
+            setError(`Lỗi: ${err.message}`);
+        } finally {
+            setVeo3IsProcessingBatch(false);
+        }
+    };
+
+    // Retry single batch item
+    const formatVeo3BatchError = (err: any) => {
+        let errorMsg = err?.message || 'Lỗi không xác định';
+        if (typeof errorMsg !== 'string') {
+            errorMsg = String(errorMsg);
+        }
+
+        if (errorMsg.includes('400') || errorMsg.includes('INVALID_ARGUMENT')) {
+            errorMsg = `Lỗi ảnh đầu vào (400) - Ảnh không hợp lệ hoặc vi phạm chính sách`;
+        } else if (errorMsg.includes('401')) {
+            errorMsg = `Lỗi xác thực (401) - API Key không hợp lệ`;
+        } else if (errorMsg.includes('403')) {
+            errorMsg = `Lỗi quyền (403) - Model chưa được cấp quyền`;
+        } else if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+            errorMsg = `Lỗi vượt giới hạn (429) - Hết quota`;
+        } else if (errorMsg.includes('500') || errorMsg.includes('503')) {
+            errorMsg = `Lỗi server - Google AI đang bận`;
+        } else if (errorMsg.includes('CONTENT_POLICY')) {
+            errorMsg = `Nội dung bị từ chối - Ảnh vi phạm chính sách`;
+        } else if (errorMsg.includes('Billing')) {
+            errorMsg = `Lỗi Billing - API Key chưa có thanh toán`;
+        }
+
+        return errorMsg;
+    };
+
+    const retryVeo3BatchItem = async (itemId: string) => {
+        const itemIndex = veo3BatchVideoItems.findIndex(i => i.id === itemId);
+        if (itemIndex === -1) return;
+        
+        const item = veo3BatchVideoItems[itemIndex];
+        const activeKey = getVeo3ActiveKey();
+        if (!activeKey) return;
+
+        setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === itemIndex ? { ...it, status: 'processing', error: undefined } : it));
+
+        try {
+            const resultUrl = await generateVeo3BatchVideo(item, activeKey);
+            setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === itemIndex ? { ...it, status: 'completed', resultUrl } : it));
+        } catch (err: any) {
+            const errorMsg = formatVeo3BatchError(err);
+            setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === itemIndex ? { ...it, status: 'error', error: errorMsg } : it));
+        }
+    };
+
+    const retryAllVeo3BatchErrors = async () => {
+        const errorItems = veo3BatchVideoItems
+            .map((item, index) => ({ item, index }))
+            .filter(({ item }) => item.status === 'error');
+
+        if (errorItems.length === 0) return;
+
+        const activeKey = getVeo3ActiveKey();
+        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+
+        setVeo3IsProcessingBatch(true);
+        setError(null);
+        setVeo3BatchCurrentIndex(0);
+        setVeo3BatchTotal(errorItems.length);
+
+        try {
+            for (let i = 0; i < errorItems.length; i++) {
+                const { item, index } = errorItems[i];
+                setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === index ? { ...it, status: 'processing', error: undefined } : it));
+                setVeo3BatchCurrentIndex(i + 1);
+
+                try {
+                    const resultUrl = await generateVeo3BatchVideo(item, activeKey);
+                    setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === index ? { ...it, status: 'completed', resultUrl } : it));
+                } catch (err: any) {
+                    const errorMsg = formatVeo3BatchError(err);
+                    setVeo3BatchVideoItems(prev => prev.map((it, idx) => idx === index ? { ...it, status: 'error', error: errorMsg } : it));
+                }
+
+                if (i < errorItems.length - 1) await new Promise(resolve => setTimeout(resolve, 8000));
+            }
+        } catch (err: any) {
+            setError(`Lỗi: ${err?.message || err}`);
+        } finally {
+            setVeo3IsProcessingBatch(false);
+        }
+    };
+
+    const downloadAllVeo3BatchVideos = async () => {
+        const completedItems = veo3BatchVideoItems
+            .map((item, index) => ({ item, index }))
+            .filter(({ item }) => item.status === 'completed' && item.resultUrl);
+
+        if (completedItems.length === 0) return;
+
+        for (let i = 0; i < completedItems.length; i++) {
+            const { item, index } = completedItems[i];
+            const link = document.createElement('a');
+            link.href = item.resultUrl;
+            link.download = `Veo3_Batch_${index + 1}.mp4`;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            if (i < completedItems.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 400));
+            }
         }
     };
 
@@ -2577,9 +3519,7 @@ QUY TẮC QUAN TRỌNG:
             const selectedModel = apiSettings.models[apiSettings.provider];
             const ai = new GoogleGenAI({ apiKey: activeKey! });
             const fallbackModels = apiSettings.provider === 'gemini'
-                ? (selectedModel === 'gemini-3-pro-image-preview'
-                    ? ['gemini-3-flash-preview']
-                    : ['gemini-3-pro-image-preview'])
+                ? getGeminiImageFallbackModels(selectedModel)
                 : [];
 
             const refInstructions = buildInfluencerRefInstructions();
@@ -2684,6 +3624,9 @@ QUY TẮC QUAN TRỌNG:
         img.src = imageUrl;
     };
 
+    const veo3BatchCompletedCount = veo3BatchVideoItems.filter(i => i.status === 'completed').length;
+    const veo3BatchErrorCount = veo3BatchVideoItems.filter(i => i.status === 'error').length;
+
     return (
         <>
             <header className="app-header">
@@ -2754,6 +3697,13 @@ QUY TẮC QUAN TRỌNG:
                     onClick={() => handleTabChange('breast-aug')}
                 >
                     👙 AI Nâng Ngực
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'veo3' ? 'active' : ''}`}
+                    onClick={() => { handleTabChange('veo3'); setVeo3SubTab('single'); }}
+                    style={activeTab === 'veo3' ? { background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', color: '#fff' } : {}}
+                >
+                    🎬 Veo3 Video
                 </button>
             </div>
 
@@ -3017,8 +3967,93 @@ QUY TẮC QUAN TRỌNG:
                                         </ImageUploader>
                                     </div>
                                 </div>
-                        </div>
+
                             </div>
+                        </div>
+
+                        {/* Hand-on Section - Thêm đồ vật cầm trên tay */}
+                        <div className="hand-on-section">
+                            <h4 className="subsection-title">✋ Hand-on: Đồ vật trên tay</h4>
+                            <p className="section-hint">Thêm đồ vật người mẫu cầm trên tay (điện thoại, túi, ví...)</p>
+
+                            {/* Dropdown + Custom Input */}
+                            <div className="hand-on-controls">
+                                <div className="hand-on-select-wrapper">
+                                    <select
+                                        className="hand-on-select"
+                                        value=""
+                                        onChange={(e) => {
+                                            if (e.target.value) {
+                                                const preset = HAND_ITEMS_PRESETS.find(p => p.id === e.target.value);
+                                                if (preset) {
+                                                    addHandItem(preset.name, true);
+                                                }
+                                                e.target.value = "";
+                                            }
+                                        }}
+                                    >
+                                        <option value="">📱 Chọn đồ vật phổ biến...</option>
+                                        {HAND_ITEMS_PRESETS.map(item => (
+                                            <option key={item.id} value={item.id}>{item.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="hand-on-custom-wrapper">
+                                    <input
+                                        type="text"
+                                        className="hand-on-input"
+                                        placeholder="Nhập đồ vật tùy chỉnh..."
+                                        value={customHandItem}
+                                        onChange={(e) => setCustomHandItem(e.target.value)}
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter') {
+                                                addCustomHandItem();
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        className="hand-on-add-btn"
+                                        onClick={addCustomHandItem}
+                                        disabled={!customHandItem.trim()}
+                                    >
+                                        ➕ Thêm
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Selected Items List */}
+                            {handItems.length > 0 && (
+                                <div className="hand-on-items-list">
+                                    <div className="hand-on-items-header">
+                                        <span className="hand-on-items-count">📦 Đã chọn: {handItems.length} đồ vật</span>
+                                        <button
+                                            className="hand-on-clear-btn"
+                                            onClick={clearAllHandItems}
+                                        >
+                                            🗑️ Xóa tất cả
+                                        </button>
+                                    </div>
+                                    <div className="hand-on-items-grid">
+                                        {handItems.map((item) => (
+                                            <div key={item.id} className="hand-on-item">
+                                                <span className="hand-item-emoji">
+                                                    {item.type === 'preset' ? getHandItemEmoji(item.name) : '📦'}
+                                                </span>
+                                                <span className="hand-item-name">{item.name}</span>
+                                                <button
+                                                    className="hand-item-remove-btn"
+                                                    onClick={() => removeHandItem(item.id)}
+                                                    title="Xóa đồ vật này"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         {/* Advanced Settings */}
                         <div className="advanced-section compact">
@@ -3272,6 +4307,12 @@ QUY TẮC QUAN TRỌNG:
                                 💾 Tải ảnh PNG (4K)
                             </button>
                             <button
+                                className="btn btn-secondary"
+                                onClick={() => handleLoadToVeo3Single(finalImage)}
+                            >
+                                🎬 Nạp vào Veo3
+                            </button>
+                            <button
                                 className="btn btn-primary"
                                 onClick={() => handleAutoFixSkin(finalImage)}
                             >
@@ -3358,6 +4399,12 @@ QUY TẮC QUAN TRỌNG:
                                 💾 Tải ảnh PNG (4K)
                             </button>
                             <button
+                                className="btn btn-secondary"
+                                onClick={() => handleLoadToVeo3Single(skinResult)}
+                            >
+                                🎬 Nạp vào Veo3
+                            </button>
+                            <button
                                 className="btn btn-primary"
                                 onClick={() => handleAutoBreastAug(skinResult)}
                                 style={{ background: 'linear-gradient(135deg, #ff5252, #d32f2f)' }}
@@ -3429,6 +4476,13 @@ QUY TẮC QUAN TRỌNG:
                                     style={{ minWidth: '200px' }}
                                 >
                                     💾 Tải ảnh PNG (4K)
+                                </button>
+                                <button
+                                    onClick={() => handleLoadToVeo3Single(breastAugResult)}
+                                    className="btn btn-secondary"
+                                    style={{ minWidth: '200px' }}
+                                >
+                                    🎬 Nạp vào Veo3
                                 </button>
                             </div>
                             <div className="continue-aug-container" style={{ marginTop: '1rem' }}>
@@ -3643,6 +4697,12 @@ QUY TẮC QUAN TRỌNG:
                                     💾 Tải ảnh PNG (4K)
                                 </button>
                                 <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleLoadToVeo3Single(swapResult)}
+                                >
+                                    🎬 Nạp vào Veo3
+                                </button>
+                                <button
                                     className="btn btn-primary"
                                     onClick={async () => {
                                         if (swapResult) {
@@ -3823,6 +4883,45 @@ QUY TẮC QUAN TRỌNG:
                             </div>
                         )}
 
+                        {/* Pose Selector */}
+                        <div className="pose-selector-section" style={{ marginTop: '1.5rem' }}>
+                            <h3 className="subsection-title">🧍 Tạo dáng (giữ nguyên trang phục)</h3>
+                            <p className="section-hint">Chọn tư thế để AI tạo dáng chính xác cho người mẫu</p>
+
+                            <div className="pose-grid">
+                                <button
+                                    className={`bg-preset-btn pose-preset-btn ${!selectedPose ? 'selected' : ''}`}
+                                    onClick={() => { setSelectedPose(null); setGenerationSettings(prev => ({ ...prev, changePose: false })); }}
+                                >
+                                    <span className="bg-preset-icon">🔒</span>
+                                    <span className="bg-preset-name">Giữ nguyên tư thế</span>
+                                    <span className="bg-preset-desc">Không thay đổi dáng</span>
+                                </button>
+                            </div>
+
+                            {poseCategories.map((category) => (
+                                <div key={category.id} className="pose-category">
+                                    <div className="pose-category-title">{category.title}</div>
+                                    <div className="pose-grid">
+                                        {posePresets.filter(p => p.category === category.id).map((pose) => (
+                                            <button
+                                                key={pose.id}
+                                                className={`bg-preset-btn pose-preset-btn ${selectedPose === pose.id ? 'selected' : ''}`}
+                                                onClick={() => {
+                                                    setSelectedPose(pose.id);
+                                                    setGenerationSettings(prev => ({ ...prev, changePose: true }));
+                                                }}
+                                            >
+                                                <span className="bg-preset-icon">{pose.icon}</span>
+                                                <span className="bg-preset-name">{pose.name}</span>
+                                                <span className="bg-preset-desc">{pose.desc}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
                         {/* Advanced Settings */}
                         <div className="advanced-section compact" style={{ marginTop: '1.5rem' }}>
                             <h3 className="subsection-title">⚙️ Cài đặt tạo ảnh</h3>
@@ -3874,6 +4973,18 @@ QUY TẮC QUAN TRỌNG:
                             </div>
                         </div>
 
+                        <div className="prompt-section" style={{ marginTop: '1.5rem' }}>
+                            <label className="vip-label">📝 Prompt tạo ảnh (sẽ gửi cho AI)</label>
+                            <textarea
+                                className="vip-textarea"
+                                value={changeBackgroundPrompt}
+                                onChange={(e) => setChangeBackgroundPrompt(e.target.value)}
+                                placeholder="Prompt sẽ tự sinh khi chọn bối cảnh và tạo dáng. Bạn có thể chỉnh sửa trước khi gửi..."
+                                rows={8}
+                            />
+                            <div className="section-hint" style={{ textAlign: 'left', marginTop: '0.4rem' }}>Prompt tự sinh theo bối cảnh & tạo dáng, có thể chỉnh sửa trước khi gửi</div>
+                        </div>
+
                         {/* Action Button */}
                         <div className="action-section" style={{ marginTop: '1.5rem' }}>
                             <button
@@ -3918,6 +5029,12 @@ QUY TẮC QUAN TRỌNG:
                                     onClick={() => handleDownload(bgResult, 'change-background', '4k')}
                                 >
                                     💾 Tải ảnh PNG (4K)
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleLoadToVeo3Single(bgResult)}
+                                >
+                                    🎬 Nạp vào Veo3
                                 </button>
                                 <button
                                     className="btn btn-primary"
@@ -4376,6 +5493,12 @@ QUY TẮC QUAN TRỌNG:
                                         💾 Tải ảnh PNG (4K)
                                     </button>
                                     <button
+                                        className="btn btn-secondary"
+                                        onClick={() => handleLoadToVeo3Single(influencerResult)}
+                                    >
+                                        🎬 Nạp vào Veo3
+                                    </button>
+                                    <button
                                         className="btn btn-primary"
                                         onClick={async () => {
                                             if (influencerResult) {
@@ -4424,6 +5547,633 @@ QUY TẮC QUAN TRỌNG:
                     )}
                 </main>
             )}
+
+            {/* ================= VEO3 VIDEO TAB ================= */}
+            {activeTab === 'veo3' && (
+                <main className="veo3-full-width">
+                    {/* Sub-tab Navigation - Styled like main tabs */}
+                    <div className="tab-navigation" style={{ marginBottom: '2rem' }}>
+                        <button
+                            className={`tab-btn ${veo3SubTab === 'single' ? 'active' : ''}`}
+                            onClick={() => setVeo3SubTab('single')}
+                        >
+                            🎬 Tạo 1 Video
+                        </button>
+                        <button
+                            className={`tab-btn ${veo3SubTab === 'batch' ? 'active' : ''}`}
+                            onClick={() => setVeo3SubTab('batch')}
+                        >
+                            🚀 Tạo Nhiều Video
+                        </button>
+                        <button
+                            className={`tab-btn ${veo3SubTab === 'clone' ? 'active' : ''}`}
+                            onClick={() => setVeo3SubTab('clone')}
+                        >
+                            🧬 Clone Motion
+                        </button>
+                    </div>
+
+                    {/* ================= SINGLE VIDEO ================= */}
+                    {veo3SubTab === 'single' && (
+                        <main className="veo3-full-width">
+                            <section className="veo3-card">
+                                <h2 className="veo3-title">🎬 Tạo Video Từ Ảnh Với Veo 3.1</h2>
+                                <p className="veo3-desc">
+                                    Tải ảnh lên và tạo video chuyển động dài 8 giây với công nghệ Google Veo 3.1
+                                </p>
+
+                                <div className="veo3-layout">
+                                    {/* Left Column - Assets & Settings */}
+                                    <div className="veo3-left">
+                                        {/* Upload Area */}
+                                        <div className="veo3-upload-section">
+                                            <label className="veo3-label">📷 Ảnh Nguồn (Start Frame)</label>
+                                            <div
+                                                className="veo3-upload-area"
+                                                onClick={() => document.getElementById('veo3-single-upload')?.click()}
+                                            >
+                                                {veo3SingleInputPreview ? (
+                                                    <>
+                                                        <img src={veo3SingleInputPreview} alt="Preview" className="veo3-upload-img" />
+                                                        <button
+                                                            className="veo3-upload-remove"
+                                                            onClick={(e) => { e.stopPropagation(); setVeo3SingleInputFile(null); setVeo3SingleInputPreview(null); }}
+                                                        >×</button>
+                                                    </>
+                                                ) : (
+                                                    <div className="veo3-upload-placeholder">
+                                                        <span className="veo3-upload-icon">📷</span>
+                                                        <p>+ Tải ảnh lên</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <input
+                                                id="veo3-single-upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => {
+                                                    if (e.target.files?.[0]) {
+                                                        const file = e.target.files[0];
+                                                        setVeo3SingleInputFile(file);
+                                                        setVeo3SingleInputPreview(URL.createObjectURL(file));
+                                                    }
+                                                }}
+                                                className="hidden-input"
+                                            />
+                                        </div>
+
+                                        {/* Configuration */}
+                                        <div className="veo3-config">
+                                            <div className="veo3-config-section">
+                                                <label className="veo3-label">🤖 Model</label>
+                                                <select
+                                                    className="veo3-select"
+                                                    value={veo3SingleModel}
+                                                    onChange={(e) => setVeo3SingleModel(e.target.value)}
+                                                >
+                                                    <option value="veo-3.1-fast-generate-preview">Veo 3.1 Fast (Tốc độ nhanh)</option>
+                                                    <option value="veo-3.1-generate-preview">Veo 3.1 Pro (Chất lượng cao)</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="veo3-config-section">
+                                                <label className="veo3-label">📐 Tỉ lệ khung hình</label>
+                                                <div className="veo3-toggle-group">
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3SingleAspectRatio === '9:16' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3SingleAspectRatio('9:16')}
+                                                    >
+                                                        <span className="veo3-toggle-icon">📱</span>
+                                                        <span>Dọc</span>
+                                                        <span className="veo3-toggle-ratio">9:16</span>
+                                                    </button>
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3SingleAspectRatio === '16:9' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3SingleAspectRatio('16:9')}
+                                                    >
+                                                        <span className="veo3-toggle-icon">💻</span>
+                                                        <span>Ngang</span>
+                                                        <span className="veo3-toggle-ratio">16:9</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="veo3-config-section">
+                                                <label className="veo3-label">🎯 Độ phân giải</label>
+                                                <div className="veo3-toggle-group">
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3SingleResolution === '720p' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3SingleResolution('720p')}
+                                                    >
+                                                        <span>📺</span>
+                                                        <span>720p</span>
+                                                    </button>
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3SingleResolution === '1080p' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3SingleResolution('1080p')}
+                                                    >
+                                                        <span>🎬</span>
+                                                        <span>1080p</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Right Column - Prompt & Generate */}
+                                    <div className="veo3-right">
+                                        <div className="veo3-prompt-section">
+                                            <label className="veo3-label">📝 Mô tả video (Prompt)</label>
+                                            <textarea
+                                                className="veo3-textarea"
+                                                value={veo3SinglePrompt}
+                                                onChange={(e) => setVeo3SinglePrompt(e.target.value)}
+                                                placeholder="Mô tả chuyển động bạn muốn trong video..."
+                                                rows={6}
+                                            />
+                                            
+                                            {/* Quick Actions */}
+                                            <div className="veo3-quick-actions">
+                                                <button
+                                                    className="veo3-quick-btn"
+                                                    onClick={() => setVeo3SinglePrompt('')}
+                                                >
+                                                    🗑️ Xóa
+                                                </button>
+                                                <button
+                                                    className="veo3-quick-btn"
+                                                    onClick={() => {
+                                                        setVeo3SinglePrompt(VEO3_PROMPT_LIBRARY[Math.floor(Math.random() * VEO3_PROMPT_LIBRARY.length)]);
+                                                    }}
+                                                >
+                                                    🎲 Ngẫu nhiên
+                                                </button>
+                                            </div>
+
+                                            <div className="veo3-prompt-library">
+                                                <div className="veo3-prompt-library-title">📚 Thư viện prompt mẫu (bấm để dùng)</div>
+                                                <div className="veo3-prompt-library-list">
+                                                    {VEO3_PROMPT_LIBRARY.map((prompt, index) => (
+                                                        <button
+                                                            key={`veo3-prompt-${index}`}
+                                                            type="button"
+                                                            className="veo3-prompt-item"
+                                                            onClick={() => setVeo3SinglePrompt(prompt)}
+                                                        >
+                                                            {prompt}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Billing Warning */}
+                                        <div className="veo3-billing-warning">
+                                            <span>⚠️</span>
+                                            <span>Tính năng này yêu cầu <strong>API Key có Billing enabled</strong></span>
+                                        </div>
+
+                                        {/* Generate Button */}
+                                        <button
+                                            className="veo3-generate-btn"
+                                            onClick={handleVeo3SingleVideo}
+                                            disabled={veo3IsGeneratingSingle || !veo3SinglePrompt}
+                                        >
+                                            {veo3IsGeneratingSingle ? (
+                                                <>
+                                                    <span className="spinner"></span>
+                                                    <span>{veo3SingleProgress || 'Đang tạo video...'}</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>🎬</span>
+                                                    <span>Tạo Video</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Result */}
+                                {(veo3IsGeneratingSingle || veo3SingleResultUrl) && (
+                                    <div className="veo3-result">
+                                        <h3>🎥 Kết Quả Video</h3>
+                                        {veo3SingleResultUrl && (
+                                            <div className="veo3-video-wrapper">
+                                                <video controls src={veo3SingleResultUrl} className="veo3-video" />
+                                            </div>
+                                        )}
+                                        {veo3SingleResultUrl && (
+                                            <a
+                                                href={veo3SingleResultUrl}
+                                                download={`Veo3_Video_${Date.now()}.mp4`}
+                                                className="veo3-download-btn"
+                                            >
+                                                💾 Tải Video MP4
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
+                            </section>
+                        </main>
+                    )}
+
+                    {/* ================= BATCH VIDEO ================= */}
+                    {veo3SubTab === 'batch' && (
+                        <main className="veo3-workspace">
+                            <section className="veo3-card">
+                                <h2 className="veo3-title">🚀 Tạo Video Hàng Loạt</h2>
+                                <p className="veo3-desc">
+                                    Tạo nhiều video cùng lúc từ danh sách ảnh với prompt riêng biệt cho từng video
+                                </p>
+
+                                <div className="veo3-layout">
+                                    {/* Left Column */}
+                                    <div className="veo3-left">
+                                        <div className="veo3-upload-section">
+                                            <label className="veo3-label">📁 Tải lên nhiều ảnh</label>
+                                            <div
+                                                className="veo3-upload-area veo3-upload-large"
+                                                onClick={() => document.getElementById('veo3-batch-upload')?.click()}
+                                            >
+                                                <span className="veo3-upload-icon">📸</span>
+                                                <p>Click để chọn nhiều ảnh</p>
+                                            </div>
+                                            <input
+                                                id="veo3-batch-upload"
+                                                type="file"
+                                                accept="image/*"
+                                                multiple
+                                                onChange={(e) => {
+                                                    if (e.target.files) {
+                                                        const files = Array.from(e.target.files);
+                                                        const newPreviews = files.map(f => URL.createObjectURL(f));
+                                                        setVeo3BatchInputFiles(prev => [...prev, ...files]);
+                                                        setVeo3BatchInputPreviews(prev => [...prev, ...newPreviews]);
+                                                    }
+                                                }}
+                                                className="hidden-input"
+                                            />
+
+                                            {veo3BatchInputPreviews.length > 0 && (
+                                                <div className="veo3-preview-grid">
+                                                    {veo3BatchInputPreviews.map((preview, idx) => (
+                                                        <div key={idx} className="veo3-preview-item">
+                                                            <img src={preview} alt={`Batch ${idx + 1}`} />
+                                                            <button
+                                                                className="veo3-preview-remove"
+                                                                onClick={() => {
+                                                                    const newFiles = veo3BatchInputFiles.filter((_, i) => i !== idx);
+                                                                    const newPreviews = veo3BatchInputPreviews.filter((_, i) => i !== idx);
+                                                                    URL.revokeObjectURL(preview);
+                                                                    setVeo3BatchInputFiles(newFiles);
+                                                                    setVeo3BatchInputPreviews(newPreviews);
+                                                                }}
+                                                            >×</button>
+                                                            <span className="veo3-preview-index">{idx + 1}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {veo3BatchInputPreviews.length > 0 && (
+                                                <button
+                                                    className="veo3-clear-btn"
+                                                    onClick={() => {
+                                                        veo3BatchInputPreviews.forEach(p => URL.revokeObjectURL(p));
+                                                        setVeo3BatchInputFiles([]);
+                                                        setVeo3BatchInputPreviews([]);
+                                                        setVeo3BatchVideoItems([]);
+                                                    }}
+                                                >
+                                                    🗑️ Xóa tất cả ({veo3BatchInputFiles.length} ảnh)
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="veo3-config">
+                                            <div className="veo3-config-section">
+                                                <label className="veo3-label">🤖 Model</label>
+                                                <select
+                                                    className="veo3-select"
+                                                    value={veo3BatchModel}
+                                                    onChange={(e) => setVeo3BatchModel(e.target.value)}
+                                                >
+                                                    <option value="veo-3.1-fast-generate-preview">Veo 3.1 Fast (Khuyến nghị)</option>
+                                                    <option value="veo-3.1-generate-preview">Veo 3.1 Pro</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Right Column */}
+                                    <div className="veo3-right">
+                                        <div className="veo3-prompt-section">
+                                            <label className="veo3-label">📝 Danh sách Prompt (mỗi dòng 1 prompt)</label>
+                                            <textarea
+                                                className="veo3-textarea"
+                                                value={veo3BatchPrompt}
+                                                onChange={(e) => setVeo3BatchPrompt(e.target.value)}
+                                                placeholder="Nhập prompt cho từng video...&#10;Mỗi dòng 1 prompt&#10;&#10;Ví dụ:&#10;Cô gái đi dạo trên bãi biển&#10;Người mẫu trong studio&#10;Fashion model với váy đỏ"
+                                                rows={8}
+                                            />
+                                            <div className="veo3-counter">
+                                                <span>Số prompt: {veo3BatchPrompt.split('\n').filter(p => p.trim()).length}</span>
+                                                <span>|</span>
+                                                <span>Số ảnh: {veo3BatchInputFiles.length}</span>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            className="veo3-generate-btn veo3-generate-orange"
+                                            onClick={handleVeo3BatchVideos}
+                                            disabled={veo3IsProcessingBatch || veo3BatchInputFiles.length === 0 || !veo3BatchPrompt.trim()}
+                                        >
+                                            {veo3IsProcessingBatch ? (
+                                                <>
+                                                    <span className="spinner"></span>
+                                                    <span>Đang xử lý: {veo3BatchCurrentIndex}/{veo3BatchTotal > 0 ? veo3BatchTotal : veo3BatchInputFiles.length}</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>🚀</span>
+                                                    <span>Tạo {veo3BatchInputFiles.length} Video</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Batch Results */}
+                                {veo3BatchVideoItems.length > 0 && (
+                                    <div className="veo3-result">
+                                        <div className="veo3-batch-header">
+                                            <h3>📋 Kết Quả Batch ({veo3BatchCompletedCount} thành công, {veo3BatchErrorCount} lỗi)</h3>
+                                            <div className="veo3-batch-actions">
+                                                <button
+                                                    className="veo3-download-all-btn"
+                                                    onClick={downloadAllVeo3BatchVideos}
+                                                    disabled={veo3IsProcessingBatch || veo3BatchCompletedCount === 0}
+                                                    title={veo3BatchCompletedCount === 0 ? 'Chưa có video thành công để tải' : undefined}
+                                                >
+                                                    ⬇️ Tải tất cả ({veo3BatchCompletedCount})
+                                                </button>
+                                                <button
+                                                    className="veo3-retry-all-btn"
+                                                    onClick={retryAllVeo3BatchErrors}
+                                                    disabled={veo3IsProcessingBatch || veo3BatchErrorCount === 0}
+                                                    title={veo3BatchErrorCount === 0 ? 'Không có video lỗi để tạo lại' : undefined}
+                                                >
+                                                    {veo3IsProcessingBatch ? '⏳ Đang xử lý...' : `🔁 Tạo lại tất cả (${veo3BatchErrorCount})`}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="veo3-batch-list">
+                                            {veo3BatchVideoItems.map((item, idx) => (
+                                                <div key={item.id} className={`veo3-batch-item ${item.status}`}>
+                                                    <img src={item.preview} alt={`Batch ${idx + 1}`} className="veo3-batch-thumb" />
+                                                    <div className="veo3-batch-info">
+                                                        <span className="veo3-batch-index">#{idx + 1}</span>
+                                                        <span className={`veo3-batch-status ${item.status}`}>
+                                                            {item.status === 'completed' ? '✓ Hoàn thành' : item.status === 'error' ? '✗ Lỗi' : '⏳ Đang xử lý...'}
+                                                        </span>
+                                                        <span className="veo3-batch-prompt">{item.prompt}</span>
+                                                        {item.status === 'error' && item.error && (
+                                                            <span className="veo3-batch-error">Lý do: {item.error}</span>
+                                                        )}
+                                                    </div>
+                                                    {item.status === 'completed' && item.resultUrl && (
+                                                        <>
+                                                            <video src={item.resultUrl} className="veo3-batch-video" />
+                                                            <a
+                                                                className="veo3-download-btn"
+                                                                href={item.resultUrl}
+                                                                download={`Veo3_Batch_${idx + 1}.mp4`}
+                                                            >
+                                                                💾 Tải MP4
+                                                            </a>
+                                                        </>
+                                                    )}
+                                                    {item.status === 'error' && (
+                                                        <button className="veo3-retry-btn" onClick={() => retryVeo3BatchItem(item.id)}>
+                                                            🔄 Thử lại
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </section>
+                        </main>
+                    )}
+
+                    {/* ================= CLONE MOTION ================= */}
+                    {veo3SubTab === 'clone' && (
+                        <main className="veo3-workspace">
+                            <section className="veo3-card">
+                                <h2 className="veo3-title">🧬 Clone Motion</h2>
+                                <p className="veo3-desc">
+                                    Phân tích chuyển động từ video và áp dụng cho ảnh nhân vật khác
+                                </p>
+
+                                <div className="veo3-layout">
+                                    {/* Left Column */}
+                                    <div className="veo3-left">
+                                        <div className="veo3-upload-section">
+                                            <label className="veo3-label">🎬 Video nguồn (Tham khảo chuyển động)</label>
+                                            <div
+                                                className="veo3-upload-area"
+                                                onClick={() => document.getElementById('veo3-clone-video')?.click()}
+                                            >
+                                                {veo3CloneSourceVideoPreview ? (
+                                                    <video src={veo3CloneSourceVideoPreview} controls className="veo3-upload-video" />
+                                                ) : (
+                                                    <div className="veo3-upload-placeholder">
+                                                        <span className="veo3-upload-icon">🎥</span>
+                                                        <p>+ Tải video tham khảo</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <input
+                                                id="veo3-clone-video"
+                                                type="file"
+                                                accept="video/*"
+                                                onChange={(e) => {
+                                                    if (e.target.files?.[0]) {
+                                                        const file = e.target.files[0];
+                                                        setVeo3CloneSourceVideo(file);
+                                                        setVeo3CloneSourceVideoPreview(URL.createObjectURL(file));
+                                                    }
+                                                }}
+                                                className="hidden-input"
+                                            />
+                                            {veo3CloneSourceVideo && (
+                                                <div className="veo3-button-group">
+                                                    <button className="veo3-secondary-btn" onClick={() => { setVeo3CloneSourceVideo(null); setVeo3CloneSourceVideoPreview(null); }}>
+                                                        🗑️ Xóa
+                                                    </button>
+                                                    <button className="veo3-primary-btn" onClick={analyzeVeo3VideoMotion} disabled={veo3IsAnalyzingVideo}>
+                                                        {veo3IsAnalyzingVideo ? '⏳ Đang phân tích...' : '🤖 Phân tích Video (AI)'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {veo3AnalyzedMotionPrompt && (
+                                            <div className="veo3-analysis-result">
+                                                <div className="veo3-analysis-header">
+                                                    <span>✅</span>
+                                                    <span>AI đã phân tích xong!</span>
+                                                </div>
+                                                <p className="veo3-analysis-text">{veo3AnalyzedMotionPrompt}</p>
+                                            </div>
+                                        )}
+
+                                        <div className="veo3-upload-section" style={{ marginTop: '1rem' }}>
+                                            <label className="veo3-label">📸 Ảnh nhân vật (Cần áp dụng chuyển động)</label>
+                                            <div
+                                                className="veo3-upload-area"
+                                                onClick={() => document.getElementById('veo3-clone-image')?.click()}
+                                            >
+                                                {veo3CloneTargetImagePreview ? (
+                                                    <img src={veo3CloneTargetImagePreview} alt="Target" className="veo3-upload-img" />
+                                                ) : (
+                                                    <div className="veo3-upload-placeholder">
+                                                        <span className="veo3-upload-icon">👤</span>
+                                                        <p>+ Tải ảnh nhân vật</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <input
+                                                id="veo3-clone-image"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => {
+                                                    if (e.target.files?.[0]) {
+                                                        const file = e.target.files[0];
+                                                        setVeo3CloneTargetImage(file);
+                                                        setVeo3CloneTargetImagePreview(URL.createObjectURL(file));
+                                                    }
+                                                }}
+                                                className="hidden-input"
+                                            />
+                                            {veo3CloneTargetImage && (
+                                                <button className="veo3-secondary-btn" style={{ marginTop: '0.5rem', width: '100%' }} onClick={() => { setVeo3CloneTargetImage(null); setVeo3CloneTargetImagePreview(null); }}>
+                                                    🗑️ Xóa ảnh
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right Column */}
+                                    <div className="veo3-right">
+                                        <div className="veo3-config">
+                                            <div className="veo3-config-section">
+                                                <label className="veo3-label">🤖 Model</label>
+                                                <select
+                                                    className="veo3-select"
+                                                    value={veo3CloneModel}
+                                                    onChange={(e) => setVeo3CloneModel(e.target.value)}
+                                                >
+                                                    <option value="veo-3.1-fast-generate-preview">Veo 3.1 Fast (Tốc độ nhanh)</option>
+                                                    <option value="veo-3.1-generate-preview">Veo 3.1 Pro (Chất lượng cao)</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="veo3-config-section">
+                                                <label className="veo3-label">📐 Tỉ lệ khung hình</label>
+                                                <div className="veo3-toggle-group">
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3CloneAspectRatio === '9:16' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3CloneAspectRatio('9:16')}
+                                                    >
+                                                        <span>📱</span><span>Dọc</span>
+                                                    </button>
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3CloneAspectRatio === '16:9' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3CloneAspectRatio('16:9')}
+                                                    >
+                                                        <span>💻</span><span>Ngang</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="veo3-config-section">
+                                                <label className="veo3-label">🎯 Độ phân giải</label>
+                                                <div className="veo3-toggle-group">
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3CloneResolution === '720p' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3CloneResolution('720p')}
+                                                    >
+                                                        <span>📺</span><span>720p</span>
+                                                    </button>
+                                                    <button
+                                                        className={`veo3-toggle-btn ${veo3CloneResolution === '1080p' ? 'active' : ''}`}
+                                                        onClick={() => setVeo3CloneResolution('1080p')}
+                                                    >
+                                                        <span>🎬</span><span>1080p</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="veo3-prompt-section">
+                                            <label className="veo3-label">📝 Mô tả chuyển động</label>
+                                            <textarea
+                                                className="veo3-textarea"
+                                                value={veo3CloneMotionPrompt}
+                                                onChange={(e) => setVeo3CloneMotionPrompt(e.target.value)}
+                                                placeholder="Mô tả chuyển động bạn muốn áp dụng... Hoặc để AI phân tích từ video nguồn."
+                                                rows={4}
+                                            />
+                                        </div>
+
+                                        <button
+                                            className="veo3-generate-btn veo3-generate-purple"
+                                            onClick={handleVeo3CloneMotion}
+                                            disabled={veo3IsGeneratingClone || !veo3CloneTargetImage || !veo3CloneMotionPrompt.trim()}
+                                        >
+                                            {veo3IsGeneratingClone ? (
+                                                <>
+                                                    <span className="spinner"></span>
+                                                    <span>{veo3CloneProgress || 'Đang clone...'}</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>🧬</span>
+                                                    <span>Tạo Video Clone Motion</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Result */}
+                                {(veo3IsGeneratingClone || veo3CloneResultUrl) && (
+                                    <div className="veo3-result">
+                                        <h3>✅ Kết Quả Clone Motion</h3>
+                                        {veo3CloneResultUrl && (
+                                            <div className="veo3-video-wrapper">
+                                                <video controls src={veo3CloneResultUrl} className="veo3-video" />
+                                            </div>
+                                        )}
+                                        {veo3CloneResultUrl && (
+                                            <a
+                                                href={veo3CloneResultUrl}
+                                                download={`Clone_Motion_${Date.now()}.mp4`}
+                                                className="veo3-download-btn"
+                                            >
+                                                💾 Tải Video MP4
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
+                            </section>
+                        </main>
+                    )}
+                </main>
+            )}
+
         </>
     );
 };
