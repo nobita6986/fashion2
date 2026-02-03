@@ -865,6 +865,37 @@ body {
     border: 1px solid #ff525255;
 }
 
+.api-test-section {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.api-test-result {
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: #1f2937;
+    color: #e5e7eb;
+    border: 1px solid #374151;
+}
+
+.api-test-result.ok {
+    border-color: #10b981;
+    color: #a7f3d0;
+}
+
+.api-test-result.error {
+    border-color: #ef4444;
+    color: #fecaca;
+}
+
+.api-test-result.testing {
+    border-color: #f59e0b;
+    color: #fde68a;
+}
+
 .hidden-file-input { display: none; }
 
 .download-container {

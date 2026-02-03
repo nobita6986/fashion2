@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // --- Types ---
-type Provider = 'gemini' | 'grok' | 'veo';
+type Provider = 'gemini' | 'veo';
 
 interface ApiKeyEntry {
     id: string;
@@ -18,12 +18,9 @@ interface ApiSettings {
     provider: Provider;
     keys: {
         gemini: ApiKeyEntry[];
-        grok: ApiKeyEntry[];
-        veo: ApiKeyEntry[];
     };
     models: {
         gemini: string;
-        grok: string;
         veo: string;
     };
 }
@@ -65,27 +62,20 @@ const DEFAULT_SETTINGS: ApiSettings = {
     keys: {
         gemini: process.env.API_KEY
             ? [{ id: 'env-key', key: process.env.API_KEY, label: 'System Env', isActive: true, createdAt: Date.now() }]
-            : [],
-        grok: [],
-        veo: []
+            : []
     },
     models: {
-        gemini: 'gemini-3-pro-image',
-        grok: 'grok-4-1-fast-reasoning',
+        gemini: 'gemini-3-pro-image-preview',
         veo: 'veo-3-1-vertical'
     }
 };
 
 const MODEL_OPTIONS = {
     gemini: [
-        { value: 'gemini-3-pro-image', label: 'Gemini 3 Pro Image (Nano Banana Pro - mới nhất, reasoning mạnh)' },
-        { value: 'gemini-2-5-flash-image', label: 'Gemini 2.5 Flash Image (Nano Banana - tốc độ/chi phí tối ưu)' },
+        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview (chất lượng cao, preview)' },
+        { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (tốc độ/chi phí tối ưu)' },
         { value: 'gemini-3-pro', label: 'Gemini 3 Pro (Text/Multimodal - Vibe Coding & Agentic mạnh)' },
         { value: 'gemini-3-flash', label: 'Gemini 3 Flash (Mặc định mới - nhanh & thông minh cho text/code)' }
-    ],
-    grok: [
-        { value: 'grok-4-1-fast-reasoning', label: 'Grok 4.1 Fast (Reasoning - Suy luận sâu)' },
-        { value: 'grok-4-1-fast-non-reasoning', label: 'Grok 4.1 Fast (Instant - Tốc độ cao)' }
     ],
     veo: [
         { value: 'veo-3-1-vertical', label: 'Veo 3.1 Vertical 9:16 (Shorts/Reels/TikTok, 4K, chuyển động chân thực)' },
@@ -118,6 +108,54 @@ const VEO3_PROMPT_LIBRARY = [
 ];
 
 // --- Helper Functions ---
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 3072;
+
+const downscaleImageBlob = async (blob: Blob, maxDimension: number = MAX_IMAGE_DIMENSION): Promise<Blob> => {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const maxSide = Math.max(img.width, img.height);
+            if (maxSide <= maxDimension) {
+                resolve(blob);
+                return;
+            }
+            const scale = maxDimension / maxSide;
+            const width = Math.round(img.width * scale);
+            const height = Math.round(img.height * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                resolve(blob);
+                return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            const isPng = blob.type === 'image/png';
+            if (isPng) {
+                canvas.toBlob((scaled) => resolve(scaled || blob), 'image/png');
+            } else {
+                canvas.toBlob((scaled) => resolve(scaled || blob), 'image/jpeg', 0.85);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(blob);
+        };
+        img.src = url;
+    });
+};
+
+const maybeDownscaleImage = async (blob: Blob): Promise<Blob> => {
+    if (!blob.type.startsWith('image/')) return blob;
+    if (blob.size <= MAX_IMAGE_BYTES) return blob;
+    const scaled = await downscaleImageBlob(blob);
+    return scaled;
+};
+
 // Enhanced fileToGenerativePart with robust validation and detailed logging
 const fileToGenerativePart = async (input: unknown, context: string = ''): Promise<{ inlineData: { data: string; mimeType: string } } | null> => {
     // Safe logging without stringify
@@ -150,7 +188,10 @@ const fileToGenerativePart = async (input: unknown, context: string = ''): Promi
             throw new Error('File is empty (size: 0)');
         }
 
-        const blob = input as File;
+        const blob = await maybeDownscaleImage(input as File);
+        if (blob.size !== input.size) {
+            console.log('[fileToGenerativePart] Downscaled File:', 'size:', blob.size, 'type:', blob.type);
+        }
         const base64EncodedDataPromise = new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -178,6 +219,10 @@ const fileToGenerativePart = async (input: unknown, context: string = ''): Promi
     if (input instanceof Blob) {
         console.log('[fileToGenerativePart] Processing Blob:', 'size:', input.size, 'type:', input.type);
 
+        const blob = await maybeDownscaleImage(input);
+        if (blob.size !== input.size) {
+            console.log('[fileToGenerativePart] Downscaled Blob:', 'size:', blob.size, 'type:', blob.type);
+        }
         const base64EncodedDataPromise = new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -190,13 +235,13 @@ const fileToGenerativePart = async (input: unknown, context: string = ''): Promi
             reader.onerror = () => {
                 reject(new Error('Failed to read blob: ' + (reader.error?.message || 'Unknown error')));
             };
-            reader.readAsDataURL(input);
+            reader.readAsDataURL(blob);
         });
 
         return {
             inlineData: {
                 data: await base64EncodedDataPromise,
-                mimeType: input.type || 'image/png'
+                mimeType: blob.type || 'image/png'
             },
         };
     }
@@ -281,6 +326,7 @@ const fileToGenerativePart = async (input: unknown, context: string = ''): Promi
 const urlToGenerativePart = async (url: string) => {
     const response = await fetch(url);
     const blob = await response.blob();
+    const finalBlob = await maybeDownscaleImage(blob);
     const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -291,14 +337,66 @@ const urlToGenerativePart = async (url: string) => {
             }
         };
         reader.onerror = () => reject(new Error('Failed to read blob'));
-        reader.readAsDataURL(blob);
+        reader.readAsDataURL(finalBlob);
     });
     return {
-        inlineData: { data: base64, mimeType: blob.type },
+        inlineData: { data: base64, mimeType: finalBlob.type || blob.type },
     };
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const DEFAULT_IMAGE_TIMEOUT_MS = 90000;
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    });
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+    }
+};
+
+const getInlineImagePart = (response: any): { data: string; mimeType: string } | null => {
+    const candidates = response?.candidates || [];
+    for (const candidate of candidates) {
+        const parts = candidate?.content?.parts || [];
+        for (const part of parts) {
+            if (part?.inlineData?.data) {
+                return part.inlineData;
+            }
+        }
+    }
+    return null;
+};
+
+const formatSafetyRatings = (ratings: any[] | undefined) => {
+    if (!Array.isArray(ratings) || ratings.length === 0) return '';
+    return ratings
+        .map(r => `${r.category || 'unknown'}:${r.probability || r.severity || 'n/a'}`)
+        .join(', ');
+};
+
+const buildNoImageError = (response: any) => {
+    const promptBlock = response?.promptFeedback?.blockReason;
+    const promptSafety = formatSafetyRatings(response?.promptFeedback?.safetyRatings);
+    const candidate = response?.candidates?.[0];
+    const finishReason = candidate?.finishReason;
+    const candidateSafety = formatSafetyRatings(candidate?.safetyRatings);
+    const textPart = candidate?.content?.parts?.find((p: any) => typeof p?.text === 'string')?.text?.trim();
+
+    let reason = '';
+    if (promptBlock) reason += `Prompt bị chặn (${promptBlock}). `;
+    if (promptSafety) reason += `Prompt safety: ${promptSafety}. `;
+    if (finishReason) reason += `finishReason=${finishReason}. `;
+    if (candidateSafety) reason += `Candidate safety: ${candidateSafety}. `;
+    if (textPart) reason += `Trả về text: ${textPart.slice(0, 160)}. `;
+
+    return reason.trim() || 'Model không trả về dữ liệu ảnh.';
+};
+
 
 // --- Hand-on Helper Functions ---
 const getHandItemEmoji = (itemName: string): string => {
@@ -335,6 +433,11 @@ const isOverloadedError = (err: unknown) => {
     return code === 503 || status === 'UNAVAILABLE' || /overloaded|unavailable|503/i.test(message);
 };
 
+const isModelNotFoundError = (err: unknown) => {
+    const { message, status } = extractGenAiErrorInfo(err);
+    return status === 'NOT_FOUND' || /not found|NOT_FOUND|not supported for generateContent/i.test(message);
+};
+
 const generateImageWithRetry = async ({
     ai,
     model,
@@ -342,6 +445,7 @@ const generateImageWithRetry = async ({
     config,
     fallbackModels = [],
     retryDelaysMs = [800, 1600, 3200],
+    timeoutMs = DEFAULT_IMAGE_TIMEOUT_MS,
 }: {
     ai: GoogleGenAI;
     model: string;
@@ -349,11 +453,16 @@ const generateImageWithRetry = async ({
     config: any;
     fallbackModels?: string[];
     retryDelaysMs?: number[];
+    timeoutMs?: number;
 }) => {
     const tryModel = async (modelName: string) => {
         for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
             try {
-                return await ai.models.generateContent({ model: modelName, contents, config });
+                return await withTimeout(
+                    ai.models.generateContent({ model: modelName, contents, config }),
+                    timeoutMs,
+                    `Request timed out after ${Math.round(timeoutMs / 1000)}s. Please retry or switch model in Settings.`
+                );
             } catch (err) {
                 if (isOverloadedError(err) && attempt < retryDelaysMs.length) {
                     await delay(retryDelaysMs[attempt]);
@@ -367,7 +476,7 @@ const generateImageWithRetry = async ({
     try {
         return await tryModel(model);
     } catch (err) {
-        if (!isOverloadedError(err)) throw err;
+        if (!isOverloadedError(err) && !isModelNotFoundError(err)) throw err;
         const uniqueFallbacks = fallbackModels.filter((m, i, arr) => m && m !== model && arr.indexOf(m) === i);
         let lastErr = err;
         for (const fallback of uniqueFallbacks) {
@@ -375,17 +484,20 @@ const generateImageWithRetry = async ({
                 return await tryModel(fallback);
             } catch (fallbackErr) {
                 lastErr = fallbackErr;
-                if (!isOverloadedError(fallbackErr)) throw fallbackErr;
+                if (!isOverloadedError(fallbackErr) && !isModelNotFoundError(fallbackErr)) throw fallbackErr;
             }
         }
         throw lastErr;
     }
 };
 
+const GEMINI_IMAGE_MODELS = new Set(['gemini-3-pro-image-preview', 'gemini-2.5-flash-image']);
+const isGeminiImageModel = (model: string) => GEMINI_IMAGE_MODELS.has(model);
+
 const getGeminiImageFallbackModels = (selectedModel: string) => {
-    if (selectedModel === 'gemini-3-pro-image') return ['gemini-2-5-flash-image'];
-    if (selectedModel === 'gemini-2-5-flash-image') return ['gemini-3-pro-image'];
-    return ['gemini-3-pro-image', 'gemini-2-5-flash-image'];
+    if (selectedModel === 'gemini-3-pro-image-preview') return ['gemini-2.5-flash-image'];
+    if (selectedModel === 'gemini-2.5-flash-image') return ['gemini-3-pro-image-preview'];
+    return ['gemini-3-pro-image-preview', 'gemini-2.5-flash-image'];
 };
 
 const getVeoAspectRatio = (model: string) => {
@@ -419,6 +531,8 @@ const SettingsModal = ({
     const [newKeyLabel, setNewKeyLabel] = useState('');
     const [bulkKeysInput, setBulkKeysInput] = useState('');
     const [showBulkInput, setShowBulkInput] = useState(false);
+    const [apiTestStatus, setApiTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+    const [apiTestMessage, setApiTestMessage] = useState('');
 
     // Sync local state when modal opens
     useEffect(() => {
@@ -428,12 +542,14 @@ const SettingsModal = ({
             setNewKeyLabel('');
             setBulkKeysInput('');
             setShowBulkInput(false);
+            setApiTestStatus('idle');
+            setApiTestMessage('');
         }
     }, [isOpen, settings]);
 
     if (!isOpen) return null;
 
-    const currentProviderKeys = localSettings.keys[localSettings.provider];
+    const currentProviderKeys = localSettings.keys.gemini;
 
     const handleModelChange = (provider: Provider, value: string) => {
         setLocalSettings(prev => ({
@@ -457,7 +573,7 @@ const SettingsModal = ({
             ...prev,
             keys: {
                 ...prev.keys,
-                [prev.provider]: [...prev.keys[prev.provider], newEntry]
+                gemini: [...prev.keys.gemini, newEntry]
             }
         }));
 
@@ -483,7 +599,7 @@ const SettingsModal = ({
             ...prev,
             keys: {
                 ...prev.keys,
-                [prev.provider]: [...prev.keys[prev.provider], ...newKeys]
+                gemini: [...prev.keys.gemini, ...newKeys]
             }
         }));
 
@@ -493,7 +609,7 @@ const SettingsModal = ({
 
     const handleDeleteKey = (id: string) => {
         setLocalSettings(prev => {
-            const updatedKeys = prev.keys[localSettings.provider].filter(k => k.id !== id);
+            const updatedKeys = prev.keys.gemini.filter(k => k.id !== id);
             if (updatedKeys.length > 0 && !updatedKeys.some(k => k.isActive)) {
                 updatedKeys[0].isActive = true;
             }
@@ -501,7 +617,7 @@ const SettingsModal = ({
                 ...prev,
                 keys: {
                     ...prev.keys,
-                    [localSettings.provider]: updatedKeys
+                    gemini: updatedKeys
                 }
             };
         });
@@ -512,7 +628,7 @@ const SettingsModal = ({
             ...prev,
             keys: {
                 ...prev.keys,
-                [localSettings.provider]: prev.keys[localSettings.provider].map(k => ({
+                gemini: prev.keys.gemini.map(k => ({
                     ...k,
                     isActive: k.id === id
                 }))
@@ -526,9 +642,58 @@ const SettingsModal = ({
                 ...prev,
                 keys: {
                     ...prev.keys,
-                    [localSettings.provider]: []
+                    gemini: []
                 }
             }));
+        }
+    };
+
+    const handleTestGeminiKey = async () => {
+        const activeKey = currentProviderKeys.find(k => k.isActive)?.key;
+        if (!activeKey) {
+            setApiTestStatus('error');
+            setApiTestMessage('Chưa có API Key active để kiểm tra.');
+            return;
+        }
+
+        setApiTestStatus('testing');
+        setApiTestMessage('Đang kiểm tra API Key và danh sách model...');
+
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${activeKey}`);
+            let data: any = null;
+            try {
+                data = await response.json();
+            } catch {
+                data = null;
+            }
+
+            if (!response.ok) {
+                const apiMessage = data?.error?.message || data?.message || `HTTP ${response.status}`;
+                throw new Error(apiMessage);
+            }
+
+            const models = Array.isArray(data?.models) ? data.models : [];
+            const names = models
+                .map((m: any) => String(m?.name || ''))
+                .filter(Boolean)
+                .map((name: string) => name.replace('models/', ''));
+            const available = new Set(names);
+            const imageModels = [...GEMINI_IMAGE_MODELS].filter(m => available.has(m));
+
+            if (imageModels.length === 0) {
+                setApiTestStatus('error');
+                setApiTestMessage('Không thấy model ảnh trong danh sách. Kiểm tra quyền API hoặc dự án/billing.');
+                return;
+            }
+
+            setApiTestStatus('ok');
+            setApiTestMessage(`OK: thấy model ảnh: ${imageModels.join(', ')}`);
+        } catch (err: any) {
+            const origin = typeof window !== 'undefined' ? window.location.origin : '';
+            const message = err?.message || 'Lỗi không xác định';
+            setApiTestStatus('error');
+            setApiTestMessage(`Lỗi: ${message}${origin ? `. Nếu API Key bị giới hạn Referrer, hãy thêm: ${origin}` : ''}`);
         }
     };
 
@@ -545,7 +710,7 @@ const SettingsModal = ({
                     <div className="form-group">
                         <label>Chọn Nhà Cung Cấp (Provider):</label>
                         <div className="provider-tabs">
-                            {(['gemini', 'grok', 'veo'] as Provider[]).map(p => (
+                            {(['gemini', 'veo'] as Provider[]).map(p => (
                                 <button
                                     key={p}
                                     className={`tab-btn small ${localSettings.provider === p ? 'active' : ''}`}
@@ -565,7 +730,7 @@ const SettingsModal = ({
                         {/* API Key Management */}
                         <div className="api-management-section">
                             <div className="api-header">
-                                <label style={{display: 'block', color: '#aaa', fontSize: '0.9rem'}}>Danh sách API Keys ({currentProviderKeys.length} keys)</label>
+                                <label style={{display: 'block', color: '#aaa', fontSize: '0.9rem'}}>Danh sách Gemini API Keys ({currentProviderKeys.length} keys)</label>
                                 <div className="api-header-actions">
                                     <button
                                         className="btn btn-small"
@@ -649,7 +814,7 @@ const SettingsModal = ({
                                     <div className="input-with-btn">
                                         <input
                                             type="password"
-                                            placeholder={`Nhập ${localSettings.provider} API Key mới...`}
+                                            placeholder="Nhập Gemini API Key mới..."
                                             value={newKeyInput}
                                             onChange={(e) => setNewKeyInput(e.target.value)}
                                             className="key-value-input"
@@ -661,6 +826,12 @@ const SettingsModal = ({
                                 </div>
                             )}
                         </div>
+
+                        {localSettings.provider === 'veo' && (
+                            <div className="section-hint" style={{ marginTop: '0.6rem' }}>
+                                Veo3 sử dụng chung API Key Gemini ở trên.
+                            </div>
+                        )}
 
                         {/* Model Selection */}
                         <div className="form-group" style={{marginTop: '1.5rem'}}>
@@ -674,6 +845,23 @@ const SettingsModal = ({
                                 ))}
                             </select>
                         </div>
+
+                        {localSettings.provider === 'gemini' && (
+                            <div className="api-test-section">
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={handleTestGeminiKey}
+                                    disabled={apiTestStatus === 'testing'}
+                                >
+                                    {apiTestStatus === 'testing' ? '🔄 Đang kiểm tra...' : '🧪 Test API Key & Model'}
+                                </button>
+                                {apiTestStatus !== 'idle' && (
+                                    <div className={`api-test-result ${apiTestStatus}`}>
+                                        {apiTestMessage}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1111,22 +1299,21 @@ const App = () => {
                 if (isLegacy) {
                     return {
                         ...DEFAULT_SETTINGS,
-                        provider: parsed.provider || 'gemini',
+                        provider: parsed.provider === 'veo' ? 'veo' : 'gemini',
                         keys: {
-                            gemini: parsed.keys.gemini ? [{ id: 'legacy-gemini', key: parsed.keys.gemini, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
-                            grok: parsed.keys.grok ? [{ id: 'legacy-grok', key: parsed.keys.grok, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
-                            veo: []
+                            gemini: parsed.keys.gemini ? [{ id: 'legacy-gemini', key: parsed.keys.gemini, label: 'Default Key', isActive: true, createdAt: Date.now() }] : []
                         },
                         models: parsed.models || DEFAULT_SETTINGS.models
                     };
                 }
 
-                // NEW MIGRATION: Ensure veo key exists
-                if (!parsed.keys?.veo) {
+                // Normalize keys to new format (Gemini only)
+                if (!parsed.keys?.gemini || !Array.isArray(parsed.keys.gemini)) {
                     parsed.keys = {
-                        ...parsed.keys,
-                        veo: []
+                        gemini: []
                     };
+                } else {
+                    parsed.keys = { gemini: parsed.keys.gemini };
                 }
                 if (!parsed.models?.veo) {
                     parsed.models = {
@@ -1135,7 +1322,22 @@ const App = () => {
                     };
                 }
 
-                return parsed;
+                if (parsed.models?.gemini === 'gemini-3-pro-image') {
+                    parsed.models.gemini = 'gemini-3-pro-image-preview';
+                }
+                if (parsed.models?.gemini === 'gemini-2-5-flash-image') {
+                    parsed.models.gemini = 'gemini-2.5-flash-image';
+                }
+
+                return {
+                    ...parsed,
+                    provider: parsed.provider === 'veo' ? 'veo' : 'gemini',
+                    keys: parsed.keys,
+                    models: {
+                        gemini: parsed.models?.gemini || DEFAULT_SETTINGS.models.gemini,
+                        veo: parsed.models?.veo || DEFAULT_SETTINGS.models.veo
+                    }
+                };
             } catch (e) {
                 return DEFAULT_SETTINGS;
             }
@@ -1544,8 +1746,8 @@ const App = () => {
     const [error, setError] = useState<string | null>(null);
 
     // Helper to get the Active API Key String
-    const getActiveKey = (provider: Provider): string | null => {
-        const keys = apiSettings.keys[provider];
+    const getActiveKey = (): string | null => {
+        const keys = apiSettings.keys.gemini;
         const activeKeyEntry = keys.find(k => k.isActive);
         return activeKeyEntry ? activeKeyEntry.key : null;
     };
@@ -1560,9 +1762,24 @@ const App = () => {
 
     // Helper to check provider validity
     const checkProviderReady = () => {
-        const activeKey = getActiveKey(apiSettings.provider);
+        const activeKey = getActiveKey();
         if (!activeKey) {
-            setError(`Vui lòng thêm và kích hoạt API Key cho ${apiSettings.provider.toUpperCase()} trong phần Cài đặt.`);
+            setError('Vui lòng thêm và kích hoạt API Key Gemini trong phần Cài đặt.');
+            setIsSettingsOpen(true);
+            return false;
+        }
+        return true;
+    };
+
+    const ensureGeminiImageReady = (featureName: string) => {
+        if (apiSettings.provider !== 'gemini') {
+            setError(`${featureName} chỉ hỗ trợ Gemini. Vui lòng chọn Gemini trong Cài đặt.`);
+            setIsSettingsOpen(true);
+            return false;
+        }
+        const selectedModel = apiSettings.models.gemini;
+        if (!isGeminiImageModel(selectedModel)) {
+            setError(`${featureName} yêu cầu model ảnh. Vui lòng chọn gemini-3-pro-image-preview hoặc gemini-2.5-flash-image trong Cài đặt.`);
             setIsSettingsOpen(true);
             return false;
         }
@@ -1970,6 +2187,7 @@ OUTPUT: A single, high-quality portrait photograph of the AI influencer characte
 
     const handleGenerateTryOn = async () => {
         if (!checkProviderReady()) return;
+        if (!ensureGeminiImageReady('Virtual Try-On')) return;
 
         if (!modelFile) {
             setError('Vui lòng tải ảnh người mẫu.');
@@ -1992,9 +2210,8 @@ OUTPUT: A single, high-quality portrait photograph of the AI influencer characte
         setFinalImage(null);
 
         try {
-            // Use configured provider
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
+            const activeKey = getActiveKey();
+            const selectedModel = apiSettings.models.gemini;
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
             const parts: any[] = [];
@@ -2265,7 +2482,10 @@ The model in the output must look like the model in the last input image!
 `;
             }
 
-            const response = await ai.models.generateContent({
+            const fallbackModels = getGeminiImageFallbackModels(selectedModel);
+
+            const response = await generateImageWithRetry({
+                ai,
                 model: selectedModel,
                 contents: { parts: [...parts, { text: instructions }] },
                 config: {
@@ -2274,13 +2494,14 @@ The model in the output must look like the model in the last input image!
                         aspectRatio: generationSettings.aspectRatio
                     }
                 },
+                fallbackModels
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setFinalImage(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
+            const inline = getInlineImagePart(response);
+            if (inline) {
+                setFinalImage(`data:${inline.mimeType};base64,${inline.data}`);
             } else {
-                throw new Error("AI không thể tạo ảnh. Vui lòng thử lại hoặc đổi Model.");
+                throw new Error(`AI không thể tạo ảnh. ${buildNoImageError(response)}`);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Lỗi ghép đồ.');
@@ -2293,6 +2514,7 @@ The model in the output must look like the model in the last input image!
         const fileToUse = inputFile instanceof File ? inputFile : skinFile;
 
         if (!checkProviderReady()) return;
+        if (!ensureGeminiImageReady('Fix da nhựa')) return;
 
         if (!fileToUse) {
             setError('Vui lòng tải ảnh cần xử lý.');
@@ -2316,8 +2538,8 @@ The model in the output must look like the model in the last input image!
         setSkinResult(null);
 
         try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
+            const activeKey = getActiveKey();
+            const selectedModel = apiSettings.models.gemini;
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
             console.log('Processing skin fix with file:', fileToUse instanceof File ? fileToUse.name : 'non-File', 'type:', typeof fileToUse);
@@ -2446,19 +2668,23 @@ A beautiful, natural-looking photo where the skin has been subtly enhanced
 to remove the artificial plastic look while maintaining all original qualities.
 `;
 
-            const response = await ai.models.generateContent({
+            const fallbackModels = getGeminiImageFallbackModels(selectedModel);
+
+            const response = await generateImageWithRetry({
+                ai,
                 model: selectedModel,
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
                 config: { responseModalities: [Modality.IMAGE] },
+                fallbackModels
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setSkinResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
+            const inline = getInlineImagePart(response);
+            if (inline) {
+                setSkinResult(`data:${inline.mimeType};base64,${inline.data}`);
             } else {
-                throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
+                throw new Error(`Không thể xử lý ảnh. ${buildNoImageError(response)}`);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Lỗi xử lý ảnh.');
@@ -2471,6 +2697,7 @@ to remove the artificial plastic look while maintaining all original qualities.
         const fileToUse = inputFile instanceof File ? inputFile : breastAugFile;
 
         if (!checkProviderReady()) return;
+        if (!ensureGeminiImageReady('AI Nâng ngực')) return;
 
         if (!fileToUse) {
             setError('Vui lòng tải ảnh nhân vật.');
@@ -2494,8 +2721,8 @@ to remove the artificial plastic look while maintaining all original qualities.
         setBreastAugResult(null);
 
         try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
+            const activeKey = getActiveKey();
+            const selectedModel = apiSettings.models.gemini;
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
             console.log('Processing breast aug with file:', fileToUse instanceof File ? fileToUse.name : 'non-File', 'type:', typeof fileToUse);
@@ -2520,19 +2747,23 @@ to remove the artificial plastic look while maintaining all original qualities.
             A high-quality, photorealistic image with the requested enhancement.
             `;
 
-            const response = await ai.models.generateContent({
+            const fallbackModels = getGeminiImageFallbackModels(selectedModel);
+
+            const response = await generateImageWithRetry({
+                ai,
                 model: selectedModel,
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
                 config: { responseModalities: [Modality.IMAGE] },
+                fallbackModels
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setBreastAugResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
+            const inline = getInlineImagePart(response);
+            if (inline) {
+                setBreastAugResult(`data:${inline.mimeType};base64,${inline.data}`);
             } else {
-                throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
+                throw new Error(`Không thể xử lý ảnh. ${buildNoImageError(response)}`);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Lỗi xử lý ảnh.');
@@ -2576,19 +2807,19 @@ to remove the artificial plastic look while maintaining all original qualities.
             setError('Vui lòng chọn loại trang phục!');
             return;
         }
+        if (!checkProviderReady()) return;
+        if (!ensureGeminiImageReady('Tạo trang phục AI')) return;
 
         setIsGeneratingClothing(true);
         setError(null);
         setAiGeneratedClothing(null);
 
         try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
+            const activeKey = getActiveKey();
+            const selectedModel = apiSettings.models.gemini;
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
-            const fallbackModels = apiSettings.provider === 'gemini'
-                ? getGeminiImageFallbackModels(selectedModel)
-                : [];
+            const fallbackModels = getGeminiImageFallbackModels(selectedModel);
 
             // Find the selected clothing option
             const clothingOption = aiClothingOptions.find(opt => opt.id === selectedAIClothing);
@@ -2615,7 +2846,8 @@ REQUIREMENTS:
 
 OUTPUT: A single, high-quality image of the ${clothingOption.name} on a transparent/white background, centered and well-lit.`;
 
-            const response = await ai.models.generateContent({
+            const response = await generateImageWithRetry({
+                ai,
                 model: selectedModel,
                 contents: {
                     parts: [{ text: prompt }],
@@ -2624,12 +2856,12 @@ OUTPUT: A single, high-quality image of the ${clothingOption.name} on a transpar
                 fallbackModels
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                const generatedImage = `data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`;
+            const inline = getInlineImagePart(response);
+            if (inline) {
+                const generatedImage = `data:${inline.mimeType};base64,${inline.data}`;
                 setAiGeneratedClothing(generatedImage);
             } else {
-                throw new Error("Không thể tạo trang phục. Vui lòng thử lại.");
+                throw new Error(`Không thể tạo trang phục. ${buildNoImageError(response)}`);
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
@@ -2767,6 +2999,9 @@ QUY TẮC QUAN TRỌNG:
 
     // Face Swap Function
     const handleFaceSwap = async () => {
+        if (!checkProviderReady()) return;
+        if (!ensureGeminiImageReady('Swap Face')) return;
+
         if (!modelFile || !faceSourceFile) {
             setError('Vui lòng tải lên cả ảnh nhân vật chính và ảnh khuôn mặt!');
             return;
@@ -2776,13 +3011,11 @@ QUY TẮC QUAN TRỌNG:
         setError(null);
 
         try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
+            const activeKey = getActiveKey();
+            const selectedModel = apiSettings.models.gemini;
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
-            const fallbackModels = apiSettings.provider === 'gemini'
-                ? getGeminiImageFallbackModels(selectedModel)
-                : [];
+            const fallbackModels = getGeminiImageFallbackModels(selectedModel);
 
             // Determine source and target based on hot-swap
             const targetFile = isHotSwap ? faceSourceFile : modelFile;
@@ -2875,20 +3108,20 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                 fallbackModels
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setSwapResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
+            const inline = getInlineImagePart(response);
+            if (inline) {
+                setSwapResult(`data:${inline.mimeType};base64,${inline.data}`);
             } else {
-                throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
+                throw new Error(`Không thể xử lý ảnh. ${buildNoImageError(response)}`);
             }
         } catch (err) {
             let errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
             if (typeof errorMessage === 'string' && (errorMessage.includes('not supported for generateContent') || errorMessage.includes('models/veo-') || errorMessage.includes('NOT_FOUND'))) {
-                errorMessage = 'Model hiện tại không hỗ trợ đổi bối cảnh. Vui lòng chọn model ảnh (gemini-3-pro-image hoặc gemini-2-5-flash-image) trong Cài đặt.';
+                errorMessage = 'Model hiện tại không hỗ trợ đổi bối cảnh. Vui lòng chọn model ảnh (gemini-3-pro-image-preview hoặc gemini-2.5-flash-image) trong Cài đặt.';
                 setIsSettingsOpen(true);
             }
             const overloadMessage = isOverloadedError(err)
-                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-2-5-flash-image).'
+                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-2.5-flash-image).'
                 : null;
             console.error('Face swap error:', err);
             setError(`Face swap thất bại: ${errorMessage}`);
@@ -2902,6 +3135,9 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
 
     // Change Background Handler
     const handleChangeBackground = async () => {
+        if (!checkProviderReady()) return;
+        if (!ensureGeminiImageReady('Thay đổi bối cảnh')) return;
+
         if (!bgSourceFile) {
             setError('Vui lòng tải lên ảnh người mẫu!');
             return;
@@ -2911,9 +3147,9 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
             return;
         }
 
-        const selectedModel = apiSettings.models[apiSettings.provider];
+        const selectedModel = apiSettings.models.gemini;
         if (apiSettings.provider === 'veo' || selectedModel.startsWith('veo-')) {
-            setError('Đổi bối cảnh không hỗ trợ model Veo. Vui lòng vào Cài đặt và chọn model ảnh (ví dụ: gemini-3-pro-image hoặc gemini-2-5-flash-image).');
+            setError('Đổi bối cảnh không hỗ trợ model Veo. Vui lòng vào Cài đặt và chọn model ảnh (ví dụ: gemini-3-pro-image-preview hoặc gemini-2.5-flash-image).');
             setIsSettingsOpen(true);
             return;
         }
@@ -2922,12 +3158,10 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
         setError(null);
 
         try {
-            const activeKey = getActiveKey(apiSettings.provider);
+            const activeKey = getActiveKey();
             const ai = new GoogleGenAI({ apiKey: activeKey! });
 
-            const fallbackModels = apiSettings.provider === 'gemini'
-                ? getGeminiImageFallbackModels(selectedModel)
-                : [];
+            const fallbackModels = getGeminiImageFallbackModels(selectedModel);
 
             console.log('Change Background - Source:', bgSourceFile?.name);
 
@@ -2964,16 +3198,16 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                 fallbackModels
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setBgResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
+            const inline = getInlineImagePart(response);
+            if (inline) {
+                setBgResult(`data:${inline.mimeType};base64,${inline.data}`);
             } else {
-                throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
+                throw new Error(`Không thể xử lý ảnh. ${buildNoImageError(response)}`);
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
             const overloadMessage = isOverloadedError(err)
-                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-2-5-flash-image).'
+                ? 'Model is overloaded (503). Please retry or switch model in Settings (try gemini-2.5-flash-image).'
                 : null;
             console.error('Change background error:', err);
             setError(`Thay đổi bối cảnh thất bại: ${errorMessage}`);
@@ -3052,18 +3286,16 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
         return link || null;
     };
 
-    // Get active Veo3 API key
+    // Get active API key (shared with Gemini)
     const getVeo3ActiveKey = (): string | null => {
-        const veoKeys = apiSettings.keys.veo;
-        const activeKey = veoKeys.find(k => k.isActive);
-        return activeKey ? activeKey.key : null;
+        return getActiveKey();
     };
 
     // Single Video Generation
     const handleVeo3SingleVideo = async () => {
         if (!veo3SinglePrompt.trim()) { alert('Vui lòng nhập mô tả video!'); return; }
         const activeKey = getVeo3ActiveKey();
-        if (!activeKey) { setError('Vui lòng thêm API Key cho Veo3 trong phần Cài đặt!'); setIsSettingsOpen(true); return; }
+        if (!activeKey) { setError('Vui lòng thêm API Key Gemini (dùng chung cho Veo3) trong phần Cài đặt!'); setIsSettingsOpen(true); return; }
 
         setVeo3IsGeneratingSingle(true);
         setVeo3SingleResultUrl(null);
@@ -3139,7 +3371,7 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                 errorMsg = `❌ Lỗi Billing\n\nAPI Key chưa được kích hoạt thanh toán.\n\n💡 Giải pháp:\n• Vào Google Cloud Console\n• Bật Billing cho project\n• Liên kết thẻ tín dụng/ATM`;
             } else if (errorMsg.includes('No API key') || errorMsg.includes('API Key') || errorMsg.includes('apiKey')) {
                 errorType = 'no-key-error';
-                errorMsg = `❌ Thiếu API Key\n\nBạn chưa thêm API Key cho Veo3.\n\n💡 Giải pháp:\n• Vào nút ⚙️ Cài đặt ở header\n• Thêm Gemini API Key có Billing enabled`;
+                errorMsg = `❌ Thiếu API Key\n\nBạn chưa thêm API Key Gemini (dùng chung cho Veo3).\n\n💡 Giải pháp:\n• Vào nút ⚙️ Cài đặt ở header\n• Thêm Gemini API Key có Billing enabled`;
             } else if (errorMsg.includes('download') || errorMsg.includes('tải')) {
                 errorType = 'download-error';
                 errorMsg = `❌ Lỗi tải video\n\nKhông thể tải video về máy.\n\n💡 Giải pháp:\n• Thử lại sau\n• Kiểm tra kết nối internet`;
@@ -3178,7 +3410,7 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
     const analyzeVeo3VideoMotion = async () => {
         if (!veo3CloneSourceVideoPreview) { alert('Vui lòng tải video nguồn!'); return; }
         const activeKey = getVeo3ActiveKey();
-        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+        if (!activeKey) { setError('Vui lòng thêm API Key Gemini!'); setIsSettingsOpen(true); return; }
 
         setVeo3IsAnalyzingVideo(true);
         setVeo3AnalyzedMotionPrompt('');
@@ -3238,7 +3470,7 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
         if (!veo3CloneTargetImage) { alert('Vui lòng tải ảnh nhân vật!'); return; }
         if (!veo3CloneMotionPrompt.trim()) { alert('Vui lòng mô tả chuyển động!'); return; }
         const activeKey = getVeo3ActiveKey();
-        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+        if (!activeKey) { setError('Vui lòng thêm API Key Gemini!'); setIsSettingsOpen(true); return; }
 
         setVeo3IsGeneratingClone(true);
         setVeo3CloneResultUrl(null);
@@ -3310,7 +3542,7 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                 errorMsg = `❌ Lỗi Billing\n\nAPI Key chưa được kích hoạt thanh toán.\n\n💡 Giải pháp:\n• Vào Google Cloud Console > Bật Billing`;
             } else if (errorMsg.includes('No API key') || errorMsg.includes('API Key')) {
                 errorType = 'no-key-error';
-                errorMsg = `❌ Thiếu API Key\n\nVui lòng thêm API Key trong phần Cài đặt.`;
+                errorMsg = `❌ Thiếu API Key\n\nVui lòng thêm API Key Gemini trong phần Cài đặt.`;
             } else if (errorMsg.includes('download') || errorMsg.includes('tải')) {
                 errorType = 'download-error';
                 errorMsg = `❌ Lỗi tải video\n\nKhông thể tải video về máy.\n\n💡 Giải pháp:\n• Thử lại sau\n• Kiểm tra kết nối internet`;
@@ -3372,7 +3604,7 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
         if (items.length === 0) { alert('Vui lòng tải ít nhất 1 ảnh!'); return; }
         
         const activeKey = getVeo3ActiveKey();
-        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+        if (!activeKey) { setError('Vui lòng thêm API Key Gemini!'); setIsSettingsOpen(true); return; }
 
         setVeo3BatchVideoItems(items);
         setVeo3BatchCurrentIndex(0);
@@ -3456,7 +3688,7 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
         if (errorItems.length === 0) return;
 
         const activeKey = getVeo3ActiveKey();
-        if (!activeKey) { setError('Vui lòng thêm API Key!'); setIsSettingsOpen(true); return; }
+        if (!activeKey) { setError('Vui lòng thêm API Key Gemini!'); setIsSettingsOpen(true); return; }
 
         setVeo3IsProcessingBatch(true);
         setError(null);
@@ -3510,22 +3742,24 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
 
     // AI Influencer Generation Function
     const handleGenerateInfluencer = async () => {
+        if (!checkProviderReady()) return;
+        if (!ensureGeminiImageReady('Tạo AI Influencer')) return;
+
         setIsGeneratingInfluencer(true);
         setError(null);
         setInfluencerResult(null);
 
         try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
-            const ai = new GoogleGenAI({ apiKey: activeKey! });
-            const fallbackModels = apiSettings.provider === 'gemini'
-                ? getGeminiImageFallbackModels(selectedModel)
-                : [];
+            const activeKey = getActiveKey();
+            const selectedModel = apiSettings.models.gemini;
 
             const refInstructions = buildInfluencerRefInstructions();
             const prompt = influencerPrompt.trim()
                 ? influencerPrompt
                 : buildInfluencerPrompt(refInstructions);
+
+            const ai = new GoogleGenAI({ apiKey: activeKey! });
+            const fallbackModels = getGeminiImageFallbackModels(selectedModel);
 
             const parts: any[] = [];
             if (influencerRefFile) {
@@ -3540,7 +3774,8 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                 parts
             };
 
-            const response = await ai.models.generateContent({
+            const response = await generateImageWithRetry({
+                ai,
                 model: selectedModel,
                 contents: contents,
                 config: {
@@ -3549,13 +3784,14 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                         aspectRatio: influencerAspectRatio
                     }
                 },
+                fallbackModels
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setInfluencerResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
+            const inline = getInlineImagePart(response);
+            if (inline) {
+                setInfluencerResult(`data:${inline.mimeType};base64,${inline.data}`);
             } else {
-                throw new Error("Không thể tạo influencer. Vui lòng thử lại.");
+                throw new Error(`Không thể tạo influencer. ${buildNoImageError(response)}`);
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
@@ -4885,8 +5121,8 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
 
                         {/* Pose Selector */}
                         <div className="pose-selector-section" style={{ marginTop: '1.5rem' }}>
-                            <h3 className="subsection-title">🧍 Tạo dáng (giữ nguyên trang phục)</h3>
-                            <p className="section-hint">Chọn tư thế để AI tạo dáng chính xác cho người mẫu</p>
+                            <h3 className="subsection-title">🧍 Tư thế & tùy chọn</h3>
+                            <p className="section-hint">Giữ nguyên tư thế, có thể bật đổi biểu cảm hoặc toàn thân</p>
 
                             <div className="pose-grid">
                                 <button
@@ -4896,6 +5132,24 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                                     <span className="bg-preset-icon">🔒</span>
                                     <span className="bg-preset-name">Giữ nguyên tư thế</span>
                                     <span className="bg-preset-desc">Không thay đổi dáng</span>
+                                </button>
+
+                                <button
+                                    className={`bg-preset-btn pose-preset-btn ${generationSettings.changeExpression ? 'selected' : ''}`}
+                                    onClick={() => toggleGenerationSetting('changeExpression')}
+                                >
+                                    <span className="bg-preset-icon">😊</span>
+                                    <span className="bg-preset-name">Đổi biểu cảm</span>
+                                    <span className="bg-preset-desc">Tạo biểu cảm phù hợp</span>
+                                </button>
+
+                                <button
+                                    className={`bg-preset-btn pose-preset-btn ${generationSettings.generateFullBody ? 'selected' : ''}`}
+                                    onClick={() => toggleGenerationSetting('generateFullBody')}
+                                >
+                                    <span className="bg-preset-icon">🦵</span>
+                                    <span className="bg-preset-name">Toàn thân</span>
+                                    <span className="bg-preset-desc">Hiển thị đủ từ đầu đến chân</span>
                                 </button>
                             </div>
 
@@ -4946,31 +5200,6 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                                 </div>
                             </div>
 
-                            <div className="settings-row options-row">
-                                <button
-                                    className={`option-chip ${generationSettings.changePose ? 'active' : ''}`}
-                                    onClick={() => toggleGenerationSetting('changePose')}
-                                >
-                                    {generationSettings.changePose && <span className="chip-check">✓</span>}
-                                    <span>💃 Đổi tư thế</span>
-                                </button>
-
-                                <button
-                                    className={`option-chip ${generationSettings.changeExpression ? 'active' : ''}`}
-                                    onClick={() => toggleGenerationSetting('changeExpression')}
-                                >
-                                    {generationSettings.changeExpression && <span className="chip-check">✓</span>}
-                                    <span>😊 Đổi biểu cảm</span>
-                                </button>
-
-                                <button
-                                    className={`option-chip ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                    onClick={() => toggleGenerationSetting('generateFullBody')}
-                                >
-                                    {generationSettings.generateFullBody && <span className="chip-check">✓</span>}
-                                    <span>🦵 Toàn thân</span>
-                                </button>
-                            </div>
                         </div>
 
                         <div className="prompt-section" style={{ marginTop: '1.5rem' }}>
@@ -4979,10 +5208,10 @@ TRÍCH XUẤT KHUÔN MẶT NGUỒN (nguồn khuôn mặt - ảnh thứ 2):`;
                                 className="vip-textarea"
                                 value={changeBackgroundPrompt}
                                 onChange={(e) => setChangeBackgroundPrompt(e.target.value)}
-                                placeholder="Prompt sẽ tự sinh khi chọn bối cảnh và tạo dáng. Bạn có thể chỉnh sửa trước khi gửi..."
+                                placeholder="Prompt sẽ tự sinh theo bối cảnh và các tùy chọn. Bạn có thể chỉnh sửa trước khi gửi..."
                                 rows={8}
                             />
-                            <div className="section-hint" style={{ textAlign: 'left', marginTop: '0.4rem' }}>Prompt tự sinh theo bối cảnh & tạo dáng, có thể chỉnh sửa trước khi gửi</div>
+                            <div className="section-hint" style={{ textAlign: 'left', marginTop: '0.4rem' }}>Prompt tự sinh theo bối cảnh & tùy chọn, có thể chỉnh sửa trước khi gửi</div>
                         </div>
 
                         {/* Action Button */}
